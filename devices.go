@@ -10,7 +10,6 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"log"
 	"math"
-	"strconv"
 )
 
 var fields = &fieldmaskpb.FieldMask{
@@ -216,7 +215,7 @@ func createDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
 		"log_level":              device.LogLevel,
 		"metadata":               device.Metadata,
 		"gateway_config":         device.GatewayConfig,
-		"active_key":             strconv.Itoa(int(device.NumId)),
+		"active_key":             generateRandomKey(),
 		"enabled":                true,
 		"allow_key_auth":         true,
 		"allow_certificate_auth": true,

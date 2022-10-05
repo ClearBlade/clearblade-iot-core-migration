@@ -12,10 +12,13 @@ import (
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"io/ioutil"
 	"log"
+	"math"
+	"math/rand"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Data struct {
@@ -154,4 +157,16 @@ func getFormatNumber(format gcpiotpb.PublicKeyFormat) cb.KeyFormat {
 	}
 
 	return 0
+}
+
+func generateRandomKey() string {
+	charset := "abcdefghijklmnopqrstuvwxyz" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
+	varLength := int(math.Floor(seededRand.Float64()*10) + 22)
+
+	b := make([]byte, varLength)
+	for i := range b {
+		b[i] = charset[seededRand.Intn(len(charset))]
+	}
+	return string(b)
 }
