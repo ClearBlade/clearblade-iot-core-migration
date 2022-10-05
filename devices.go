@@ -64,11 +64,14 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 	var devices []*gcpiotpb.Device
 
 	if len(deviceIds) > 10000 {
+		fmt.Println("\nMore than 10k devices specified in the CSV file. Preparing to batch fetch devices...")
 		maxIterations := int(math.Floor(float64(len(deviceIds))/float64(10000))) + 1
 		for i := 0; i < maxIterations; i++ {
 			var batchDeviceIds []string
 			if i == maxIterations-1 {
-				batchDeviceIds = deviceIds[10000+i*10000:]
+				batchDeviceIds = deviceIds[1+i*10000:]
+			} else if i == 0 {
+				batchDeviceIds = deviceIds[i*10000 : 10000+i*10000]
 			} else {
 				batchDeviceIds = deviceIds[1+i*10000 : 10000+i*10000]
 			}
@@ -78,7 +81,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 				DeviceIds: batchDeviceIds,
 				FieldMask: fields,
 			}
-			devicesSubset := fetchDevices(req, ctx, client, len(devices))
+			devicesSubset := fetchDevices(req, ctx, client, len(batchDeviceIds))
 			devices = append(devices, devicesSubset...)
 		}
 		defer client.Close()
@@ -131,19 +134,23 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client *gcpiotcore.DeviceManagerClient, devicesLength int) []*gcpiotpb.Device {
 	var devices []*gcpiotpb.Device
 	it := client.ListDevices(ctx, req)
-	successMsg := "Fetched " + fmt.Sprint(devicesLength) + " devices specified in the CSV file!"
-	bar := getProgressBar(devicesLength, "Fetching devices from registry...", successMsg)
+	bar := getProgressBar(devicesLength, "Fetching devices from registry...", "")
 	for {
-		if err := bar.Add(1); err != nil {
-			log.Fatalln("Unable to add to progressbar: ", err)
-		}
-
 		resp, err := it.Next()
 		if err == iterator.Done {
+			if err := bar.Finish(); err != nil {
+				log.Fatalln("Unable to finish progressbar: ", err)
+			}
+			successMsg := "Fetched " + fmt.Sprint(len(devices)) + " devices"
+			fmt.Println(string(colorGreen), "\n\u2713 ", successMsg, string(colorReset))
 			break
 		}
 		if err != nil {
 			log.Fatalln("Unable to iterate over device records: ", err)
+		}
+
+		if err := bar.Add(1); err != nil {
+			log.Fatalln("Unable to add to progressbar: ", err)
 		}
 
 		devices = append(devices, resp)
@@ -184,18 +191,19 @@ func addDevicesToClearBlade(client *cb.DevClient, devices []*gcpiotpb.Device) {
 
 func updateDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
 	_, err := client.UpdateDevice(Args.systemKey, device.Id, map[string]interface{}{
-		"last_heart_beat_time":  device.LastHeartbeatTime,
-		"last_event_time":       device.LastEventTime,
-		"last_state_time":       device.LastStateTime,
-		"last_config_ack_time":  device.LastConfigAckTime,
-		"last_config_send_time": device.LastConfigSendTime,
-		"blocked":               device.Blocked,
-		"last_error_time":       device.LastErrorTime,
-		"last_error_status":     device.LastErrorStatus,
-		"config":                device.Config,
-		"log_level":             device.LogLevel,
-		"metadata":              device.Metadata,
-		"gateway_config":        device.GatewayConfig,
+		// "last_heart_beat_time":  device.LastHeartbeatTime,
+		// "last_event_time":       device.LastEventTime,
+		// "last_state_time":       device.LastStateTime,
+		// "last_config_ack_time":  device.LastConfigAckTime,
+		// "last_config_send_time": device.LastConfigSendTime,
+		// "blocked":               device.Blocked,
+		// "last_error_time":       device.LastErrorTime,
+		// "last_error_status":     device.LastErrorStatus,
+		// "config":                device.Config,
+		// "log_level":             device.LogLevel,
+		// "metadata":              device.Metadata,
+		// "gateway_config":        device.GatewayConfig,
+		"type": "update",
 	})
 
 	return err
@@ -203,18 +211,19 @@ func updateDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
 
 func createDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
 	_, err := client.CreateDevice(Args.systemKey, device.Id, map[string]interface{}{
-		"last_heart_beat_time":   device.LastHeartbeatTime,
-		"last_event_time":        device.LastEventTime,
-		"last_state_time":        device.LastStateTime,
-		"last_config_ack_time":   device.LastConfigAckTime,
-		"last_config_send_time":  device.LastConfigSendTime,
-		"blocked":                device.Blocked,
-		"last_error_time":        device.LastErrorTime,
-		"last_error_status":      device.LastErrorStatus,
-		"config":                 device.Config,
-		"log_level":              device.LogLevel,
-		"metadata":               device.Metadata,
-		"gateway_config":         device.GatewayConfig,
+		// "last_heart_beat_time":   device.LastHeartbeatTime,
+		// "last_event_time":        device.LastEventTime,
+		// "last_state_time":        device.LastStateTime,
+		// "last_config_ack_time":   device.LastConfigAckTime,
+		// "last_config_send_time":  device.LastConfigSendTime,
+		// "blocked":                device.Blocked,
+		// "last_error_time":        device.LastErrorTime,
+		// "last_error_status":      device.LastErrorStatus,
+		// "config":                 device.Config,
+		// "log_level":              device.LogLevel,
+		// "metadata":               device.Metadata,
+		// "gateway_config":         device.GatewayConfig,
+		"type":                   "test",
 		"active_key":             generateRandomKey(),
 		"enabled":                true,
 		"allow_key_auth":         true,

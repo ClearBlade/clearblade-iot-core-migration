@@ -85,7 +85,9 @@ func getProgressBar(total int, description, onCompletionText string) *progressba
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
 		progressbar.OptionOnCompletion(func() {
-			fmt.Println(string(colorGreen), "\n\u2713 ", onCompletionText, string(colorReset))
+			if onCompletionText != "" {
+				fmt.Println(string(colorGreen), "\n\u2713 ", onCompletionText, string(colorReset))
+			}
 		}),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
