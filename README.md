@@ -1,4 +1,4 @@
-# clearblade-iot-core-migration
+# ClearBlade IoT Core Migration Tool
 Go tool that migrates devices from Google IoT Core registries to ClearBlade device table
 
 ## Starting the migration tool
