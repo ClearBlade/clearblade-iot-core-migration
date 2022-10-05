@@ -8,7 +8,6 @@ builds:
       - windows
       - darwin
     binary: clearblade-iot-core-migration
-    gobinary: "go1.18"
 archives:
   - replacements:
       darwin: Darwin
