@@ -117,8 +117,7 @@ func getURI(region string) string {
 		return "https://iot-sandbox.clearblade.com"
 	}
 
-	return "https://community.clearblade.com"
-	// return "https://" + region + ".clearblade.com"
+	return "https://" + region + ".clearblade.com"
 }
 
 func getAbsPath(path string) (string, error) {
