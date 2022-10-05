@@ -1,3 +1,4 @@
 .vscode
 devices.csv
 test.csv
+dist/
