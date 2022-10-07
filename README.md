@@ -8,8 +8,8 @@ This tool allows multiple CLI flags for starting the migration. It is required t
 | Name                                         | CLI Flag                  | Default       | Required                                                              |
 | -------------------------------------------- | ------------------------- | -------------------------- | -------------------------------------------------------------------- |
 | System Key                                   | `systemKey`               | N/A            | `Yes`                                                                  |
-| Developer Email                                | `email`            | N/A          | `Yes`                                                                 |
-| Developer Token                            | `token`             | N/A                        | `Yes`                                              |
+| User Email                                | `email`            | N/A          | `Yes`                                                                 |
+| User Token                            | `token`             | N/A                        | `Yes`                                              |
 | Google IoT Core Registry Name                  | `registryName`            | N/A                        | `Yes`                                                     |
 | Project Region                | `region`              | N/A                        | `Yes` |
 | GCP Service account file path               | `gcpServiceAccount`              | N/A                        | `Yes` |
@@ -37,3 +37,15 @@ In order to compile the tool for execution, the following steps need to be perfo
     - `cd clearblade-iot-core-migration`
 3.  Compile the tool for your needed architecture and OS
     - `GOARCH=arm GOARM=5 GOOS=linux go build`
+
+
+### Release a new version
+
+In order to release a new version, the following steps need to be performed:
+
+1.  Commit and push your changes to the master branch
+2.  Add a new tag to the new commit
+    - `git tag -m "Release v1.0.0" v1.0.0 <commit_id>`
+3.  Push tags
+    - `git push --tags`
+4. Goreleaser and github actions will take care of releasing a new binaries
