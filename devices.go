@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"log"
 	"math"
+	"time"
 )
 
 var fields = &fieldmaskpb.FieldMask{
@@ -191,13 +192,13 @@ func addDevicesToClearBlade(client *cb.DevClient, devices []*gcpiotpb.Device) {
 
 func updateDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
 	_, err := client.UpdateDevice(Args.systemKey, device.Id, map[string]interface{}{
-		"last_heart_beat_time":  device.LastHeartbeatTime,
-		"last_event_time":       device.LastEventTime,
-		"last_state_time":       device.LastStateTime,
-		"last_config_ack_time":  device.LastConfigAckTime,
-		"last_config_send_time": device.LastConfigSendTime,
+		"last_heart_beat_time":  device.LastHeartbeatTime.AsTime().Format(time.RFC3339),
+		"last_event_time":       device.LastEventTime.AsTime().Format(time.RFC3339),
+		"last_state_time":       device.LastStateTime.AsTime().Format(time.RFC3339),
+		"last_config_ack_time":  device.LastConfigAckTime.AsTime().Format(time.RFC3339),
+		"last_config_send_time": device.LastConfigSendTime.AsTime().Format(time.RFC3339),
 		"blocked":               device.Blocked,
-		"last_error_time":       device.LastErrorTime,
+		"last_error_time":       device.LastErrorTime.AsTime().Format(time.RFC3339),
 		"last_error_status":     device.LastErrorStatus,
 		"config":                device.Config,
 		"log_level":             device.LogLevel,
@@ -210,13 +211,13 @@ func updateDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
 
 func createDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
 	_, err := client.CreateDevice(Args.systemKey, device.Id, map[string]interface{}{
-		"last_heart_beat_time":   device.LastHeartbeatTime,
-		"last_event_time":        device.LastEventTime,
-		"last_state_time":        device.LastStateTime,
-		"last_config_ack_time":   device.LastConfigAckTime,
-		"last_config_send_time":  device.LastConfigSendTime,
+		"last_heart_beat_time":   device.LastHeartbeatTime.AsTime().Format(time.RFC3339),
+		"last_event_time":        device.LastEventTime.AsTime().Format(time.RFC3339),
+		"last_state_time":        device.LastStateTime.AsTime().Format(time.RFC3339),
+		"last_config_ack_time":   device.LastConfigAckTime.AsTime().Format(time.RFC3339),
+		"last_config_send_time":  device.LastConfigSendTime.AsTime().Format(time.RFC3339),
 		"blocked":                device.Blocked,
-		"last_error_time":        device.LastErrorTime,
+		"last_error_time":        device.LastErrorTime.AsTime().Format(time.RFC3339),
 		"last_error_status":      device.LastErrorStatus,
 		"config":                 device.Config,
 		"log_level":              device.LogLevel,
