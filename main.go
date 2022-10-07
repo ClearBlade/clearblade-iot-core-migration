@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	cb "github.com/clearblade/Go-SDK"
 	"log"
 )
 
@@ -19,6 +18,7 @@ var (
 	colorReset  = "\033[0m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
 )
 
 type DeviceMigratorArgs struct {
@@ -42,8 +42,8 @@ type DeviceMigratorArgs struct {
 }
 
 func initMigrationFlags() {
-	flag.StringVar(&Args.email, "email", "", "ClearBlade Dev User Email (Required)")
-	flag.StringVar(&Args.token, "token", "", "ClearBlade Dev Token (Required)")
+	flag.StringVar(&Args.email, "email", "", "ClearBlade User Email (Required)")
+	flag.StringVar(&Args.token, "token", "", "ClearBlade User Token (Required)")
 	flag.StringVar(&Args.systemKey, "systemKey", "", "ClearBlade System Key (Required)")
 
 	flag.StringVar(&Args.serviceAccountFile, "gcpServiceAccount", "", "Service account file path (Required)")
@@ -74,8 +74,8 @@ func main() {
 
 	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
 
-	// Authenticate GCP service user and Clearblade Dev account
-	ctx, gcpClient, cbClient, err := authenticate()
+	// Authenticate GCP service user and Clearblade User account
+	ctx, gcpClient, err := authenticate()
 
 	if err != nil {
 		log.Fatalln(err)
@@ -87,7 +87,10 @@ func main() {
 	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
 
 	// Add fetched devices to ClearBlade Device table
-	addDevicesToClearBlade(cbClient, devices)
+	addDevicesToClearBlade(devices)
+
+	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
+
 }
 
 func validateCBFlags() {
@@ -108,9 +111,9 @@ func validateCBFlags() {
 	}
 
 	if Args.token == "" {
-		value, err := readInput("Enter ClearBlade Dev Token: ")
+		value, err := readInput("Enter ClearBlade User Token: ")
 		if err != nil {
-			log.Fatalln("Error reading dev token: ", err)
+			log.Fatalln("Error reading user token: ", err)
 		}
 		Args.token = value
 	}
@@ -152,16 +155,16 @@ func validateGCPIoTCoreFlags() {
 	Args.platformURL = getURI(Args.region)
 }
 
-func authenticate() (context.Context, *gcpiotcore.DeviceManagerClient, *cb.DevClient, error) {
+func authenticate() (context.Context, *gcpiotcore.DeviceManagerClient, error) {
 	absServiceAccountPath, err := getAbsPath(Args.serviceAccountFile)
 	if err != nil {
 		errMsg := "Cannot resolve service account filepath: " + err.Error()
-		return nil, nil, nil, errors.New(errMsg)
+		return nil, nil, errors.New(errMsg)
 	}
 
 	if !fileExists(absServiceAccountPath) {
 		errMsg := "Unable to locate service account credential's filepath: " + absServiceAccountPath
-		return nil, nil, nil, errors.New(errMsg)
+		return nil, nil, errors.New(errMsg)
 	}
 
 	ctx := context.Background()
@@ -173,12 +176,5 @@ func authenticate() (context.Context, *gcpiotcore.DeviceManagerClient, *cb.DevCl
 
 	fmt.Println(string(colorGreen), "\n\u2713 GCP Service Account Authenticated!", string(colorReset))
 
-	cbClient, err := authClearBladeAccount()
-	if err != nil {
-		log.Fatalln("Unable to authenticate CB user: ", Args.email, err)
-	}
-
-	fmt.Println(string(colorGreen), "\n\u2713 ClearBlade Dev Account Authenticated!\n", string(colorReset))
-
-	return ctx, gcpClient, cbClient, nil
+	return ctx, gcpClient, nil
 }

@@ -1,15 +1,19 @@
 package main
 
 import (
+	"bytes"
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
-	cb "github.com/clearblade/Go-SDK"
 	"google.golang.org/api/iterator"
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"io/ioutil"
 	"log"
 	"math"
+	"net/http"
 )
 
 var fields = &fieldmaskpb.FieldMask{
@@ -108,6 +112,7 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 
 	var devices []*gcpiotpb.Device
 	it := client.ListDevices(ctx, req)
+	fmt.Println()
 	spinner := getSpinner("Fetching all devices from registry...")
 
 	for {
@@ -127,7 +132,7 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 	}
 
 	defer client.Close()
-	fmt.Println(string(colorGreen), "\n\u2713 Fetched", len(devices), "devices!", string(colorReset))
+	fmt.Println(string(colorGreen), "\u2713 Fetched", len(devices), "devices!", string(colorReset))
 	return devices
 }
 
@@ -141,8 +146,8 @@ func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client 
 			if err := bar.Finish(); err != nil {
 				log.Fatalln("Unable to finish progressbar: ", err)
 			}
-			successMsg := "Fetched " + fmt.Sprint(len(devices)) + " devices"
-			fmt.Println(string(colorGreen), "\n\u2713 ", successMsg, string(colorReset))
+			successMsg := "Fetched " + fmt.Sprint(len(devices)) + " devices!"
+			fmt.Println(string(colorGreen), "\n\u2713", successMsg, string(colorReset))
 			break
 		}
 		if err != nil {
@@ -158,84 +163,111 @@ func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client 
 	return devices
 }
 
-func addDevicesToClearBlade(client *cb.DevClient, devices []*gcpiotpb.Device) {
-	bar := getProgressBar(len(devices), "Migrating Devices...", "Migrated all devices!")
+func addDevicesToClearBlade(devices []*gcpiotpb.Device) {
+	bar := getProgressBar(len(devices), "Migrating Devices...", "")
+	i := 0
 	for _, device := range devices {
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
 
-		err := updateDevice(client, device)
-
+		err := updateDevice(device)
 		if err != nil {
-			err := createDevice(client, device)
+			err := createDevice(device)
 			if err != nil {
 				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
-			} else {
-				addPublicKeys(client, device.Id, device.Credentials)
-			}
-		} else {
-			if Args.updatePublicKeys {
-				query := cb.NewQuery()
-				query.EqualTo("device_key", mkDeviceKey(Args.systemKey, device.Id))
-				_, err := client.DeleteDevicePublicKey(Args.systemKey, device.Id, query)
-				if err != nil {
-					log.Println("Unable to delete public keys for: ", device.Id, ". Reason: ", err)
-				} else {
-					addPublicKeys(client, device.Id, device.Credentials)
-				}
+				continue
 			}
 		}
+		i += 1
+	}
+
+	if i == len(devices) {
+		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", i, "/", len(devices), "devices!", string(colorReset))
+	} else {
+		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", i, "/", len(devices), "devices!", string(colorReset))
 	}
 }
 
-func updateDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
-	_, err := client.UpdateDevice(Args.systemKey, device.Id, map[string]interface{}{
-		"last_heart_beat_time":  device.LastHeartbeatTime,
-		"last_event_time":       device.LastEventTime,
-		"last_state_time":       device.LastStateTime,
-		"last_config_ack_time":  device.LastConfigAckTime,
-		"last_config_send_time": device.LastConfigSendTime,
-		"blocked":               device.Blocked,
-		"last_error_time":       device.LastErrorTime,
-		"last_error_status":     device.LastErrorStatus,
-		"config":                device.Config,
-		"log_level":             device.LogLevel,
-		"metadata":              device.Metadata,
-		"gateway_config":        device.GatewayConfig,
-	})
-
-	return err
-}
-
-func createDevice(client *cb.DevClient, device *gcpiotpb.Device) error {
-	_, err := client.CreateDevice(Args.systemKey, device.Id, map[string]interface{}{
-		"last_heart_beat_time":   device.LastHeartbeatTime,
-		"last_event_time":        device.LastEventTime,
-		"last_state_time":        device.LastStateTime,
-		"last_config_ack_time":   device.LastConfigAckTime,
-		"last_config_send_time":  device.LastConfigSendTime,
-		"blocked":                device.Blocked,
-		"last_error_time":        device.LastErrorTime,
-		"last_error_status":      device.LastErrorStatus,
-		"config":                 device.Config,
-		"log_level":              device.LogLevel,
-		"metadata":               device.Metadata,
-		"gateway_config":         device.GatewayConfig,
-		"active_key":             generateRandomKey(),
-		"enabled":                true,
-		"allow_key_auth":         true,
-		"allow_certificate_auth": true,
-	})
-
-	return err
-}
-
-func addPublicKeys(client *cb.DevClient, deviceId string, credentials []*gcpiotpb.DeviceCredential) {
-	for _, creds := range credentials {
-		_, err := client.AddDevicePublicKey(Args.systemKey, deviceId, creds.GetPublicKey().Key, getFormatNumber(creds.GetPublicKey().Format))
-		if err != nil {
-			log.Println("Unable to insert public key for: ", deviceId, ". Reason: ", err)
-		}
+func updateDevice(device *gcpiotpb.Device) error {
+	transformedDevice := map[string]*CbDevice{
+		"device": transform(device),
 	}
+
+	postBody, _ := json.Marshal(transformedDevice)
+	responseBody := bytes.NewBuffer(postBody)
+	
+	url := Args.platformURL + "/api/v/1/code/" + Args.systemKey + "/devicesPatch"
+	req, err := http.NewRequest("POST", url, responseBody)
+	
+	req.Header.Set("ClearBlade-UserToken", Args.token)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	jsonStr := string(body)
+	var jsonMap map[string]interface{}
+
+	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
+		// log.Fatalln("Unable to unmarshall JSON: ", err)
+		return errors.New(jsonStr)
+	}
+
+	if jsonMap["error"] != nil {
+		return errors.New(jsonStr)
+	}
+
+	return nil
+}
+
+func createDevice(device *gcpiotpb.Device) error {
+	transformedDevice := transform(device)
+	postBody, _ := json.Marshal(transformedDevice)
+	responseBody := bytes.NewBuffer(postBody)
+	url := Args.platformURL + "/api/v/1/code/" + Args.systemKey + "/devicesCreate"
+	req, err := http.NewRequest("POST", url, responseBody)
+	req.Header.Set("ClearBlade-UserToken", Args.token)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	jsonStr := string(body)
+	var jsonMap map[string]interface{}
+
+	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
+		// log.Fatalln("Unable to unmarshall JSON: ", err)
+		return errors.New(jsonStr)
+	}
+
+	if jsonMap["error"] != nil {
+		return errors.New(jsonStr)
+	}
+
+	return nil
 }

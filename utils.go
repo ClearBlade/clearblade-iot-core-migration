@@ -6,24 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	cb "github.com/clearblade/Go-SDK"
 	"github.com/k0kubun/go-ansi"
 	"github.com/schollz/progressbar/v3"
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"io/ioutil"
 	"log"
-	"math"
-	"math/rand"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
 )
-
-type Data struct {
-	Project_id string `json:"project_id"`
-}
 
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
@@ -117,7 +110,8 @@ func getURI(region string) string {
 		return "https://iot-sandbox.clearblade.com"
 	}
 
-	return "https://" + region + ".clearblade.com"
+	return "https://community.clearblade.com"
+	// return "https://" + region + ".clearblade.com"
 }
 
 func getAbsPath(path string) (string, error) {
@@ -139,35 +133,69 @@ func getAbsPath(path string) (string, error) {
 	return filepath.Join(dir, path[1:]), nil
 }
 
-func mkDeviceKey(systemKey, name string) string {
-	return systemKey + " :: " + name
-}
+func transform(device *gcpiotpb.Device) *CbDevice {
 
-func getFormatNumber(format gcpiotpb.PublicKeyFormat) cb.KeyFormat {
-	switch format {
-	case gcpiotpb.PublicKeyFormat_RSA_PEM:
-		return 0
-	case gcpiotpb.PublicKeyFormat_UNSPECIFIED_PUBLIC_KEY_FORMAT:
-		return 0
-	case gcpiotpb.PublicKeyFormat_ES256_PEM:
-		return 1
-	case gcpiotpb.PublicKeyFormat_RSA_X509_PEM:
-		return 2
-	case gcpiotpb.PublicKeyFormat_ES256_X509_PEM:
-		return 3
+	parsedCreds := make([]CbDeviceCredential, 0)
+	if Args.updatePublicKeys {
+		for _, creds := range device.Credentials {
+			parsedCreds = append(parsedCreds, CbDeviceCredential{
+				ExpirationTime: getTimeString(creds.GetExpirationTime().AsTime()),
+				PublicKey: IoTCorePublicKeyCredential{
+					Format: creds.GetPublicKey().Format.String(),
+					Key:    creds.GetPublicKey().Key,
+				},
+			})
+		}
 	}
 
-	return 0
+	cbDevice := &CbDevice{
+		Id:      device.Name,
+		Blocked: device.Blocked,
+		Config: DeviceConfig{
+			Version:         fmt.Sprint(device.Config.Version),
+			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
+			DeviceAckTime:   getTimeString(device.Config.DeviceAckTime.AsTime()),
+			BinaryData:      string(device.Config.BinaryData),
+		},
+		GatewayConfig: GatewayConfig{
+			GatewayType:             device.GatewayConfig.GatewayType.String(),
+			GatewayAuthMethod:       device.GatewayConfig.GatewayAuthMethod.String(),
+			LastAccessedGatewayId:   device.GatewayConfig.LastAccessedGatewayId,
+			LastAccessedGatewayTime: getTimeString(device.GatewayConfig.LastAccessedGatewayTime.AsTime()),
+		},
+		Credentials:        parsedCreds,
+		LastConfigAckTime:  getTimeString(device.LastConfigAckTime.AsTime()),
+		LastConfigSendTime: getTimeString(device.LastConfigSendTime.AsTime()),
+		LastErrorTime:      getTimeString(device.LastErrorTime.AsTime()),
+		LastEventTime:      getTimeString(device.LastEventTime.AsTime()),
+		LastHeartbeatTime:  getTimeString(device.LastHeartbeatTime.AsTime()),
+		LastStateTime:      getTimeString(device.LastStateTime.AsTime()),
+		LogLevel:           device.LogLevel.String(),
+		Metadata:           device.Metadata,
+		Name:               device.Id,
+		NumId:              fmt.Sprint(device.NumId),
+	}
+
+	if device.State != nil {
+		cbDevice.State = DeviceState{
+			UpdateTime: device.State.UpdateTime.String(),
+			BinaryData: string(device.State.BinaryData),
+		}
+	}
+
+	if device.LastErrorStatus != nil {
+		cbDevice.LastErrorStatus = DeviceLastErrorStatus{
+			Code:    device.LastErrorStatus.Code,
+			Message: device.LastErrorStatus.Message,
+		}
+	}
+
+	return cbDevice
 }
 
-func generateRandomKey() string {
-	charset := "abcdefghijklmnopqrstuvwxyz" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	seededRand := rand.New(rand.NewSource(time.Now().UnixNano()))
-	varLength := int(math.Floor(seededRand.Float64()*10) + 22)
-
-	b := make([]byte, varLength)
-	for i := range b {
-		b[i] = charset[seededRand.Intn(len(charset))]
+func getTimeString(timestamp time.Time) string {
+	if timestamp.Unix() == 0 {
+		return ""
 	}
-	return string(b)
+	return timestamp.Format(time.RFC3339)
 }
