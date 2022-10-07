@@ -48,4 +48,4 @@ In order to release a new version, the following steps need to be performed:
     - `git tag -m "Release v1.0.0" v1.0.0 <commit_id>`
 3.  Push tags
     - `git push --tags`
-4. Goreleaser and github actions will take care of releasing a new binaries
+4. Goreleaser and github actions will take care of releasing new binaries
