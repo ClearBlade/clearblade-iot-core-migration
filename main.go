@@ -35,7 +35,6 @@ type DeviceMigratorArgs struct {
 
 	// Optional flags
 	devicesCsvFile   string
-	stateHistory     bool
 	configHistory    bool
 	sandbox          bool
 	updatePublicKeys bool
@@ -52,7 +51,6 @@ func initMigrationFlags() {
 
 	// Optional
 	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path")
-	flag.BoolVar(&Args.stateHistory, "stateHistory", false, "Store State History. Default is false")
 	flag.BoolVar(&Args.configHistory, "configHistory", false, "Store Config History. Default is false")
 	flag.BoolVar(&Args.sandbox, "sandbox", false, "Connect to IoT Core sandbox system. Default is false")
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
@@ -82,12 +80,12 @@ func main() {
 	}
 
 	// Fetch devices from the given registry
-	devices := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
+	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
 
 	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
 
 	// Add fetched devices to ClearBlade Device table
-	addDevicesToClearBlade(devices)
+	addDevicesToClearBlade(devices, deviceConfigs)
 
 	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
 

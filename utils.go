@@ -69,7 +69,7 @@ func readInput(msg string) (string, error) {
 	return strings.TrimSuffix(input, "\n"), nil
 }
 
-func getProgressBar(total int, description, onCompletionText string) *progressbar.ProgressBar {
+func getProgressBar(total int, description string) *progressbar.ProgressBar {
 	description = string(colorYellow) + description + string(colorReset)
 	bar := progressbar.NewOptions(total,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
@@ -77,11 +77,6 @@ func getProgressBar(total int, description, onCompletionText string) *progressba
 		progressbar.OptionSetWidth(30),
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
-		progressbar.OptionOnCompletion(func() {
-			if onCompletionText != "" {
-				fmt.Println(string(colorGreen), "\n\u2713 ", onCompletionText, string(colorReset))
-			}
-		}),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
 			SaucerHead:    "[green]>[reset]",
@@ -110,7 +105,8 @@ func getURI(region string) string {
 		return "https://iot-sandbox.clearblade.com"
 	}
 
-	return "https://" + region + ".clearblade.com"
+	return "https://community.clearblade.com"
+	// return "https://" + region + ".clearblade.com"
 }
 
 func getAbsPath(path string) (string, error) {
