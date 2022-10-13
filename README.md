@@ -3,7 +3,7 @@ Go tool that migrates devices from Google IoT Core registries to ClearBlade devi
 
 ## Starting the migration tool
 
-This tool allows multiple CLI flags for starting the migration. It is required to use a developer account for authentication with this tool. See the below chart for available start options as well as their defaults.
+This tool allows multiple CLI flags for starting the migration. See the below chart for available start options as well as their defaults.
 
 | Name                                         | CLI Flag                  | Default       | Required                                                              |
 | -------------------------------------------- | ------------------------- | -------------------------- | -------------------------------------------------------------------- |
@@ -26,7 +26,7 @@ You will be prompted to enter a devices CSV file path that would be used to migr
 
 ---
 
-The ClearBlade IoT Core Migration tool is dependent upon the ClearBlade Go SDK and its dependent libraries being installed. The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install).
+The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install).
 
 ### Migration Tool compilation
 
