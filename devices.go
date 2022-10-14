@@ -256,9 +256,8 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 }
 
 func updateDevice(device *gcpiotpb.Device) error {
-	transformedDevice := map[string]interface{}{
-		"device":      transform(device),
-		"update_keys": Args.updatePublicKeys,
+	transformedDevice := map[string]*CbDevice{
+		"device": transform(device),
 	}
 
 	postBody, _ := json.Marshal(transformedDevice)
