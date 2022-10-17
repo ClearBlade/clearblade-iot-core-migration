@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"google.golang.org/api/iterator"
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -86,14 +87,9 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 				DeviceIds: batchDeviceIds,
 				FieldMask: fields,
 			}
-			devicesSubset := fetchDevices(req, ctx, client, len(batchDeviceIds))
+			devicesSubset, devicesSubsetConfigHistory := fetchDevices(req, ctx, client, len(batchDeviceIds))
 			devices = append(devices, devicesSubset...)
-		}
-
-		if Args.configHistory {
-			for _, device := range devices {
-				deviceConfigs[device.Id] = fetchConfigVersionHistory(device, ctx, client)
-			}
+			maps.Copy(deviceConfigs, devicesSubsetConfigHistory)
 		}
 
 		defer client.Close()
@@ -106,13 +102,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 		FieldMask: fields,
 	}
 
-	devices = fetchDevices(req, ctx, client, len(deviceIds))
-
-	if Args.configHistory {
-		for _, device := range devices {
-			deviceConfigs[device.Id] = fetchConfigVersionHistory(device, ctx, client)
-		}
-	}
+	devices, deviceConfigs = fetchDevices(req, ctx, client, len(deviceIds))
 
 	defer client.Close()
 	return devices, deviceConfigs
@@ -126,6 +116,8 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 	}
 
 	var devices []*gcpiotpb.Device
+	deviceConfigs := make(map[string]interface{})
+
 	it := client.ListDevices(ctx, req)
 	fmt.Println()
 	spinner := getSpinner("Fetching all devices from registry...")
@@ -141,21 +133,13 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 		}
 
 		devices = append(devices, resp)
+
+		if Args.configHistory {
+			deviceConfigs[resp.Id] = fetchConfigVersionHistory(resp, ctx, client)
+		}
+
 		if err := spinner.Add(1); err != nil {
 			log.Fatalln("Unable to add to spinner: ", err)
-		}
-	}
-
-	deviceConfigs := make(map[string]interface{})
-
-	if Args.configHistory {
-		fmt.Println()
-		spinner := getSpinner("Fetching all device config history from registry...")
-		for _, device := range devices {
-			deviceConfigs[device.Id] = fetchConfigVersionHistory(device, ctx, client)
-			if err := spinner.Add(1); err != nil {
-				log.Fatalln("Unable to add to spinner: ", err)
-			}
 		}
 	}
 
@@ -164,8 +148,10 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 	return devices, deviceConfigs
 }
 
-func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client *gcpiotcore.DeviceManagerClient, devicesLength int) []*gcpiotpb.Device {
+func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client *gcpiotcore.DeviceManagerClient, devicesLength int) ([]*gcpiotpb.Device, map[string]interface{}) {
 	var devices []*gcpiotpb.Device
+	deviceConfigs := make(map[string]interface{})
+	
 	it := client.ListDevices(ctx, req)
 	bar := getProgressBar(devicesLength, "Fetching devices from registry...")
 	for {
@@ -179,7 +165,7 @@ func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client 
 				log.Fatalln("Unable to Close progressbar: ", err)
 			}
 
-			successMsg := "Fetched " + fmt.Sprint(len(devices)) + " devices!"
+			successMsg := "Fetched " + fmt.Sprint(len(devices)) + " / " + fmt.Sprint(devicesLength) + " devices!"
 			fmt.Println(string(colorGreen), "\n\u2713", successMsg, string(colorReset))
 			break
 		}
@@ -188,13 +174,16 @@ func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client 
 			log.Fatalln("Unable to iterate over device records: ", err)
 		}
 
+		devices = append(devices, resp)
+		if Args.configHistory {
+			deviceConfigs[resp.Id] = fetchConfigVersionHistory(resp, ctx, client)
+		}
+
 		if err := bar.Add(1); err != nil {
 			log.Fatalln("Unable to add to progressbar: ", err)
 		}
-
-		devices = append(devices, resp)
 	}
-	return devices
+	return devices, deviceConfigs
 }
 
 func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, client *gcpiotcore.DeviceManagerClient) map[string]interface{} {
@@ -244,7 +233,7 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 	if deviceConfigs != nil {
 		err := updateConfigHistory(deviceConfigs)
 		if err != nil {
-			fmt.Println("\n\nUnable to update config version history!")
+			fmt.Println(string(colorRed), "\n\n\u2715 Unable to update config version history! Reason: ", err, string(colorReset))
 		}
 	}
 
