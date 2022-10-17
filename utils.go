@@ -143,7 +143,7 @@ func transform(device *gcpiotpb.Device) *CbDevice {
 	}
 
 	cbDevice := &CbDevice{
-		Id:      device.Name,
+		Id:      device.Id,
 		Blocked: device.Blocked,
 		Config: DeviceConfig{
 			Version:         fmt.Sprint(device.Config.Version),

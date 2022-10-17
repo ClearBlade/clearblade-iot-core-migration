@@ -244,7 +244,7 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 	if deviceConfigs != nil {
 		err := updateConfigHistory(deviceConfigs)
 		if err != nil {
-			fmt.Println("Unable to update config version history!")
+			fmt.Println("\n\nUnable to update config version history!")
 		}
 	}
 
