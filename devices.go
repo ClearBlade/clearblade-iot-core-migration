@@ -151,7 +151,7 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client *gcpiotcore.DeviceManagerClient, devicesLength int) ([]*gcpiotpb.Device, map[string]interface{}) {
 	var devices []*gcpiotpb.Device
 	deviceConfigs := make(map[string]interface{})
-	
+
 	it := client.ListDevices(ctx, req)
 	bar := getProgressBar(devicesLength, "Fetching devices from registry...")
 	for {
@@ -230,7 +230,7 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 		i += 1
 	}
 
-	if deviceConfigs != nil {
+	if len(deviceConfigs) != 0 {
 		err := updateConfigHistory(deviceConfigs)
 		if err != nil {
 			fmt.Println(string(colorRed), "\n\n\u2715 Unable to update config version history! Reason: ", err, string(colorReset))
@@ -245,8 +245,15 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 }
 
 func updateDevice(device *gcpiotpb.Device) error {
-	transformedDevice := map[string]*CbDevice{
+	transformedDevice := map[string]interface{}{
 		"device": transform(device),
+		"name":   device.Id,
+	}
+
+	if Args.updatePublicKeys {
+		transformedDevice["updateMask"] = "credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod"
+	} else {
+		transformedDevice["updateMask"] = "blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod"
 	}
 
 	postBody, _ := json.Marshal(transformedDevice)
