@@ -8,7 +8,6 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Name                                         | CLI Flag                  | Default       | Required                                                              |
 | -------------------------------------------- | ------------------------- | -------------------------- | -------------------------------------------------------------------- |
 | System Key                                   | `systemKey`               | N/A            | `Yes`                                                                  |
-| User Email                                | `email`            | N/A          | `Yes`                                                                 |
 | User Token                            | `token`             | N/A                        | `Yes`                                              |
 | Google IoT Core Registry Name                  | `registryName`            | N/A                        | `Yes`                                                     |
 | Project Region                | `region`              | N/A                        | `Yes` |
