@@ -17,7 +17,7 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Update public keys for existing devices                 | `updatePublicKeys`                       | `true` | `No`                                                                  |
 | Store Config Version History                 | `configHistory`                       | `false` | `No`                                                                  |
 
-`clearblade-iot-core-migration -systemKey <SYSTEM_KEY> -gcpServiceAccount <JSON_FILE_PATH> -token <DEV_TOKEN> -email <DEV_EMAIL> -registryName <IOT_CORE_REGISTRY> -region <GCP_PROJECT_REGION>`
+`clearblade-iot-core-migration -systemKey <SYSTEM_KEY> -gcpServiceAccount <JSON_FILE_PATH> -token <DEV_TOKEN> -registryName <IOT_CORE_REGISTRY> -region <GCP_PROJECT_REGION>`
 
 You will be prompted to enter a devices CSV file path that would be used to migrate devices specified in the CSV file. You can skip this step by pressing enter and by default all devices from the registry will be migrated.  
 
