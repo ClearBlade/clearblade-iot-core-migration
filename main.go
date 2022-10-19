@@ -24,7 +24,6 @@ var (
 type DeviceMigratorArgs struct {
 	// ClearBlade specific flags
 	platformURL string
-	email       string
 	token       string
 	systemKey   string
 
@@ -41,7 +40,6 @@ type DeviceMigratorArgs struct {
 }
 
 func initMigrationFlags() {
-	flag.StringVar(&Args.email, "email", "", "ClearBlade User Email (Required)")
 	flag.StringVar(&Args.token, "token", "", "ClearBlade User Token (Required)")
 	flag.StringVar(&Args.systemKey, "systemKey", "", "ClearBlade System Key (Required)")
 
@@ -98,14 +96,6 @@ func validateCBFlags() {
 			log.Fatalln("Error reading system key: ", err)
 		}
 		Args.systemKey = value
-	}
-
-	if Args.email == "" {
-		value, err := readInput("Enter ClearBlade User Email: ")
-		if err != nil {
-			log.Fatalln("Error reading user email: ", err)
-		}
-		Args.email = value
 	}
 
 	if Args.token == "" {
