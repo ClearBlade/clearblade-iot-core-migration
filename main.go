@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 )
 
 var (
@@ -62,7 +63,12 @@ func main() {
 	initMigrationFlags()
 	flag.Parse()
 
-	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n", string(colorReset))
+	if os.Args[1] == "version" {
+		fmt.Printf("%s\n", cbIotCoreMigrationVersion)
+		os.Exit(0)
+	}
+
+	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", string(colorReset))
 
 	// Validate if all required Google IOT Core flags are provided
 	validateGCPIoTCoreFlags()
