@@ -7,10 +7,11 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 
 | Name                                         | CLI Flag                  | Default       | Required                                                              |
 | -------------------------------------------- | ------------------------- | -------------------------- | -------------------------------------------------------------------- |
-| System Key                                   | `systemKey`               | N/A            | `Yes`                                                                  |
-| User Token                            | `token`             | N/A                        | `Yes`                                              |
-| Google IoT Core Registry Name                  | `registryName`            | N/A                        | `Yes`                                                     |
-| Project Region                | `region`              | N/A                        | `Yes` |
+| ClearBlade System Key                                   | `cbSystemKey`               | N/A            | `Yes`                                                                  |
+| ClearBlade User Token                            | `cbToken`             | N/A                        | `Yes`                                              |
+| ClearBlade Registry Region                            | `cbRegistryRegion`             | N/A                        | `No`                                              |
+| Google IoT Core Registry Name                  | `gcpRegistryName`            | N/A                        | `Yes`                                                     |
+| Project Region                | `gcpRegistryRegion`              | N/A                        | `Yes` |
 | GCP Service account file path               | `gcpServiceAccount`              | N/A                        | `Yes` |
 | Device to migrate CSV file path  | `devicesCsv`                | N/A                        | `No`                                                                  |
 | Connect to IoT Core sandbox system                        | `sandbox`                      | `false`       | `No`                                                                  |

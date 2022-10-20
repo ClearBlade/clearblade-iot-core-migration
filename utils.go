@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/k0kubun/go-ansi"
 	"github.com/schollz/progressbar/v3"
+	"golang.org/x/exp/maps"
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"io/ioutil"
 	"log"
@@ -17,6 +18,12 @@ import (
 	"strings"
 	"time"
 )
+
+var regions = map[string]string{
+	"us-central1":  "us-central1",
+	"asia-east1":   "asia-east1",
+	"europe-west1": "europe-west1",
+}
 
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
@@ -100,12 +107,23 @@ func getSpinner(description string) *progressbar.ProgressBar {
 }
 
 func getURI(region string) string {
-
 	if Args.sandbox {
 		return "https://iot-sandbox.clearblade.com"
 	}
 
+	if !isValidRegion(region) {
+		log.Fatalln("Provided region is not supported. Supported regions are: ", maps.Keys(regions))
+	}
+
 	return "https://" + region + ".clearblade.com"
+}
+
+func isValidRegion(region string) bool {
+	if _, ok := regions[region]; !ok {
+		return false
+	}
+
+	return true
 }
 
 func getAbsPath(path string) (string, error) {

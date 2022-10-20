@@ -40,7 +40,7 @@ var fields = &fieldmaskpb.FieldMask{
 func fetchDevicesFromGoogleIotCore(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
 
 	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := "projects/" + getProjectID(val) + "/locations/" + Args.region + "/registries/" + Args.registryName
+	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion + "/registries/" + Args.registryName
 
 	if Args.devicesCsvFile != "" {
 		return fetchDevicesFromCSV(ctx, gcpClient, parent)

@@ -23,14 +23,15 @@ var (
 
 type DeviceMigratorArgs struct {
 	// ClearBlade specific flags
-	platformURL string
-	token       string
-	systemKey   string
+	platformURL      string
+	token            string
+	systemKey        string
+	cbRegistryRegion string
 
 	// GCP IoT Core specific flags
 	serviceAccountFile string
 	registryName       string
-	region             string
+	gcpRegistryRegion  string
 
 	// Optional flags
 	devicesCsvFile   string
@@ -40,12 +41,13 @@ type DeviceMigratorArgs struct {
 }
 
 func initMigrationFlags() {
-	flag.StringVar(&Args.token, "token", "", "ClearBlade User Token (Required)")
-	flag.StringVar(&Args.systemKey, "systemKey", "", "ClearBlade System Key (Required)")
+	flag.StringVar(&Args.token, "cbToken", "", "ClearBlade User Token (Required)")
+	flag.StringVar(&Args.systemKey, "cbSystemKey", "", "ClearBlade System Key (Required)")
+	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Registry Region (Optional)")
 
 	flag.StringVar(&Args.serviceAccountFile, "gcpServiceAccount", "", "Service account file path (Required)")
-	flag.StringVar(&Args.registryName, "registryName", "", "Registry Name (Required)")
-	flag.StringVar(&Args.region, "region", "", "Project Region (Required)")
+	flag.StringVar(&Args.registryName, "gcpRegistryName", "", "Google Registry Name (Required)")
+	flag.StringVar(&Args.gcpRegistryRegion, "gcpRegistryRegion", "", "Google Registry Region (Required)")
 
 	// Optional
 	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path")
@@ -62,11 +64,11 @@ func main() {
 
 	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n", string(colorReset))
 
-	// Validate if all required CB flags are provided
-	validateCBFlags()
-
 	// Validate if all required Google IOT Core flags are provided
 	validateGCPIoTCoreFlags()
+
+	// Validate if all required CB flags are provided
+	validateCBFlags()
 
 	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
 
@@ -105,6 +107,20 @@ func validateCBFlags() {
 		}
 		Args.token = value
 	}
+
+	if Args.cbRegistryRegion == "" {
+		value, err := readInput("Enter ClearBlade Registry Region (Press enter to skip if you are migrating to the same region): ")
+		if err != nil {
+			log.Fatalln("Error reading registry region: ", err)
+		}
+
+		if value == "" {
+			Args.platformURL = getURI(Args.gcpRegistryRegion)
+		} else {
+			Args.platformURL = getURI(value)
+		}
+
+	}
 }
 
 func validateGCPIoTCoreFlags() {
@@ -116,6 +132,22 @@ func validateGCPIoTCoreFlags() {
 		Args.serviceAccountFile = value
 	}
 
+	if Args.registryName == "" {
+		value, err := readInput("Enter Google Registry Name: ")
+		if err != nil {
+			log.Fatalln("Error reading registry name: ", err)
+		}
+		Args.registryName = value
+	}
+
+	if Args.gcpRegistryRegion == "" {
+		value, err := readInput("Enter GCP Registry Region: ")
+		if err != nil {
+			log.Fatalln("Error reading GCP registry region: ", err)
+		}
+		Args.gcpRegistryRegion = value
+	}
+
 	if Args.devicesCsvFile == "" {
 		value, err := readInput("Enter Devices CSV file path (By default all devices from the registry will be migrated. Press enter to skip!): ")
 		if err != nil {
@@ -123,24 +155,6 @@ func validateGCPIoTCoreFlags() {
 		}
 		Args.devicesCsvFile = value
 	}
-
-	if Args.registryName == "" {
-		value, err := readInput("Enter Registry Name: ")
-		if err != nil {
-			log.Fatalln("Error reading registry name: ", err)
-		}
-		Args.registryName = value
-	}
-
-	if Args.region == "" {
-		value, err := readInput("Enter Project Region: ")
-		if err != nil {
-			log.Fatalln("Error reading project region: ", err)
-		}
-		Args.region = value
-	}
-
-	Args.platformURL = getURI(Args.region)
 }
 
 func authenticate() (context.Context, *gcpiotcore.DeviceManagerClient, error) {
