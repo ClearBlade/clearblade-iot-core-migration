@@ -1,3 +1,3 @@
 package main
 
-const cbIotCoreMigrationVersion = "v1.2.0"
+const cbIotCoreMigrationVersion = "v1.2.1"
