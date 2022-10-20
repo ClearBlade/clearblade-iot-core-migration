@@ -11,7 +11,7 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | ClearBlade User Token                            | `cbToken`             | N/A                        | `Yes`                                              |
 | ClearBlade Registry Region                            | `cbRegistryRegion`             | N/A                        | `No`                                              |
 | Google IoT Core Registry Name                  | `gcpRegistryName`            | N/A                        | `Yes`                                                     |
-| Project Region                | `gcpRegistryRegion`              | N/A                        | `Yes` |
+| Google IoT Core Registry Region                | `gcpRegistryRegion`              | N/A                        | `Yes` |
 | GCP Service account file path               | `gcpServiceAccount`              | N/A                        | `Yes` |
 | Device to migrate CSV file path  | `devicesCsv`                | N/A                        | `No`                                                                  |
 | Connect to IoT Core sandbox system                        | `sandbox`                      | `false`       | `No`                                                                  |
