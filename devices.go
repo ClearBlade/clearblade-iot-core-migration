@@ -4,6 +4,7 @@ import (
 	"bytes"
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -204,7 +205,7 @@ func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, cli
 		configs[fmt.Sprint(config.Version)] = map[string]interface{}{
 			"cloudUpdateTime": getTimeString(config.CloudUpdateTime.AsTime()),
 			"deviceAckTime":   getTimeString(config.DeviceAckTime.AsTime()),
-			"binaryData":      string(config.BinaryData),
+			"binaryData":      base64.StdEncoding.EncodeToString(config.BinaryData),
 		}
 	}
 

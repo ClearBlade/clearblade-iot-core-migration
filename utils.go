@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -26,11 +27,12 @@ var regions = map[string]string{
 }
 
 func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+		fmt.Println("File path does not exists: ", filename)
 		return false
 	}
-	return !info.IsDir()
+
+	return true
 }
 
 func readCsvFile(filePath string) [][]string {
@@ -112,7 +114,7 @@ func getURI(region string) string {
 	}
 
 	if !isValidRegion(region) {
-		log.Fatalln("Provided region is not supported. Supported regions are: ", maps.Keys(regions))
+		log.Fatalln("Provided region '", region, "' is not supported. Supported regions are: ", maps.Keys(regions))
 	}
 
 	return "https://" + region + ".clearblade.com"
@@ -167,7 +169,7 @@ func transform(device *gcpiotpb.Device) *CbDevice {
 			Version:         fmt.Sprint(device.Config.Version),
 			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
 			DeviceAckTime:   getTimeString(device.Config.DeviceAckTime.AsTime()),
-			BinaryData:      string(device.Config.BinaryData),
+			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
 		},
 		GatewayConfig: GatewayConfig{
 			GatewayType:             device.GatewayConfig.GatewayType.String(),
@@ -190,8 +192,8 @@ func transform(device *gcpiotpb.Device) *CbDevice {
 
 	if device.State != nil {
 		cbDevice.State = DeviceState{
-			UpdateTime: device.State.UpdateTime.String(),
-			BinaryData: string(device.State.BinaryData),
+			UpdateTime: getTimeString(device.State.UpdateTime.AsTime()),
+			BinaryData: base64.StdEncoding.EncodeToString(device.State.BinaryData),
 		}
 	}
 

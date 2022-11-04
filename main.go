@@ -125,7 +125,8 @@ func validateCBFlags() {
 		} else {
 			Args.platformURL = getURI(value)
 		}
-
+	} else {
+		Args.platformURL = getURI(Args.cbRegistryRegion)
 	}
 }
 
