@@ -26,6 +26,12 @@ You will be prompted to enter a devices CSV file path that would be used to migr
 
 ---
 
+### Running the tool
+
+Install & run the latest binary from https://github.com/ClearBlade/clearblade-iot-core-migration/releases.
+
+**Note - We recommend you to use linux or darwin binaries.** 
+
 The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install).
 
 ### Migration Tool compilation
