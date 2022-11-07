@@ -3,6 +3,8 @@ Go tool that migrates devices from Google IoT Core registries to ClearBlade devi
 
 ## Starting the migration tool
 
+**We recommend you to use a GCloud instance in the same region as your registry to speed up the migration process.**
+
 This tool allows multiple CLI flags for starting the migration. See the below chart for available start options as well as their defaults.
 
 | Name                                         | CLI Flag                  | Default       | Required                                                              |
