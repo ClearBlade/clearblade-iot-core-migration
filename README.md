@@ -20,6 +20,8 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Update public keys for existing devices                 | `updatePublicKeys`                       | `true` | `No`                                                                  |
 | Store Config Version History                 | `configHistory`                       | `false` | `No`                                                                  |
 
+**Note - We recommend you to use linux or darwin binaries. It's unlikely but possible something could fail during the migration. A failed_devices CSV file will be created at the end of this migration.  Please submit this file to the [ClearBlade Support](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20) and we will ensure 100% success** 
+
 `clearblade-iot-core-migration -cbSystemKey <SYSTEM_KEY> -gcpServiceAccount <JSON_FILE_PATH> -cbToken <DEV_TOKEN> -gcpRegistryName <IOT_CORE_REGISTRY> -gcpRegistryRegion <GCP_PROJECT_REGION>`
 
 You will be prompted to enter a devices CSV file path that would be used to migrate devices specified in the CSV file. You can skip this step by pressing enter and by default all devices from the registry will be migrated.  
@@ -31,8 +33,6 @@ You will be prompted to enter a devices CSV file path that would be used to migr
 ### Running the tool
 
 Install & run the latest binary from https://github.com/ClearBlade/clearblade-iot-core-migration/releases.
-
-**Note - We recommend you to use linux or darwin binaries.** 
 
 The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install).
 
