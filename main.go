@@ -63,6 +63,10 @@ func main() {
 	initMigrationFlags()
 	flag.Parse()
 
+	if len(os.Args) == 1 {
+		log.Fatalln("No flags supplied. Use clearblade-iot-core-migration --help to view details.")
+	}
+
 	if os.Args[1] == "version" {
 		fmt.Printf("%s\n", cbIotCoreMigrationVersion)
 		os.Exit(0)

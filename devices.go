@@ -16,6 +16,8 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"os"
+	"time"
 )
 
 var fields = &fieldmaskpb.FieldMask{
@@ -225,6 +227,16 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 			err := updateDevice(device)
 			if err != nil {
 				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
+
+				f, err := os.OpenFile(fmt.Sprint("failed_devices_", time.Now().Format("2006-01-02T15:04:05"), ".csv"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					log.Println(err)
+				}
+
+				defer f.Close()
+				if _, err := f.WriteString(fmt.Sprint(device.Id, "\n")); err != nil {
+					log.Println(err)
+				}
 				continue
 			}
 		}
