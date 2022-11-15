@@ -1,9 +1,16 @@
 # ClearBlade IoT Core Migration Tool
 Go tool that migrates devices from Google IoT Core registries to ClearBlade device table
 
-## Starting the migration tool
+## Prerequisites
 
-**We recommend you to use a GCloud instance in the same region as your registry to speed up the migration process.**
+This tools is designed to move devices after you have already enabled the offering in the Google Cloud marketplace and have connected your project. If you haven't done that already, refer to the folowing two links to -  
+
+1. [Activate Marketplace offering](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2230976570/Google+Cloud+Marketplace+Activation)
+
+2. [Migrating existing registries](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2207449095/Migration+Tutorial)
+
+
+## Usage
 
 This tool allows multiple CLI flags for starting the migration. See the below chart for available start options as well as their defaults.
 
@@ -20,12 +27,7 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Update public keys for existing devices                 | `updatePublicKeys`                       | `true` | `No`                                                                  |
 | Store Config Version History                 | `configHistory`                       | `false` | `No`                                                                  |
 
-**Note - We recommend you to use linux or darwin binaries. It's unlikely but possible something could fail during the migration. A failed_devices CSV file will be created at the end of this migration.  Please submit this file to the [ClearBlade Support](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20) and we will ensure 100% success** 
-
-`clearblade-iot-core-migration -cbSystemKey <SYSTEM_KEY> -gcpServiceAccount <JSON_FILE_PATH> -cbToken <DEV_TOKEN> -gcpRegistryName <IOT_CORE_REGISTRY> -gcpRegistryRegion <GCP_PROJECT_REGION>`
-
-You will be prompted to enter a devices CSV file path that would be used to migrate devices specified in the CSV file. You can skip this step by pressing enter and by default all devices from the registry will be migrated.  
-
+  
 ## Setup
 
 ---
@@ -34,11 +36,18 @@ You will be prompted to enter a devices CSV file path that would be used to migr
 
 Install & run the latest binary from https://github.com/ClearBlade/clearblade-iot-core-migration/releases.
 
-The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install).
+**Note - We recommend you to use linux or darwin binaries. It's unlikely but possible something could fail during the migration. A failed_devices CSV file will be created at the end of this migration.  Please submit this file to the [ClearBlade Support](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20) and we will ensure 100% success** 
+
+`clearblade-iot-core-migration -cbSystemKey <SYSTEM_KEY> -gcpServiceAccount <JSON_FILE_PATH> -cbToken <DEV_TOKEN> -gcpRegistryName <IOT_CORE_REGISTRY> -gcpRegistryRegion <GCP_PROJECT_REGION>`
+
+You will be prompted to enter a devices CSV file path that would be used to migrate devices specified in the CSV file. You can skip this step by pressing enter and by default all devices from the registry will be migrated.
+
+**Running this tool in a GCloud instance in the same region as your registry will speed up the migration process.**
+
 
 ### Migration Tool compilation
 
-In order to compile the tool for execution, the following steps need to be performed:
+The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install). In order to compile the tool for execution, the following steps need to be performed:
 
 1.  Retrieve the adapter source code
     - `git clone git@github.com:ClearBlade/clearblade-iot-core-migration.git`
@@ -58,3 +67,8 @@ In order to release a new version, the following steps need to be performed:
 3.  Push tags
     - `git push --tags`
 4. Goreleaser and github actions will take care of releasing new binaries
+
+## Support
+
+
+If you have any questions or errors using this tool, please feel free to open tickets on our [IoT Core Support Desk](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20)

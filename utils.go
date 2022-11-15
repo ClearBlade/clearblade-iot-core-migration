@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -28,7 +29,7 @@ var regions = map[string]string{
 
 func fileExists(filename string) bool {
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
-		fmt.Println("File path does not exists: ", filename)
+		fmt.Println("File path does not exists: ", filename, "Error: ", err)
 		return false
 	}
 
@@ -75,7 +76,10 @@ func readInput(msg string) (string, error) {
 	}
 
 	// remove the delimeter from the string
-	return strings.TrimSuffix(input, "\n"), nil
+	input = strings.TrimSuffix(input, "\n")
+	input = strings.TrimSuffix(input, "\r")
+
+	return input, nil
 }
 
 func getProgressBar(total int, description string) *progressbar.ProgressBar {
@@ -134,7 +138,7 @@ func getAbsPath(path string) (string, error) {
 	}
 
 	if path[0] != '~' {
-		return path, nil
+		return strings.TrimSuffix(path, "\r"), nil
 	}
 
 	if len(path) > 1 && path[1] != '/' && path[1] != '\\' {
@@ -212,4 +216,30 @@ func getTimeString(timestamp time.Time) string {
 		return ""
 	}
 	return timestamp.Format(time.RFC3339)
+}
+
+func generateFailedDevicesCSV(fileContents string) error {
+	currDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	failedDevicesFile := fmt.Sprint(currDir, "/failed_devices_", time.Now().Format("2006-01-02T15:04:05"), ".csv")
+
+	if runtime.GOOS == "windows" {
+		failedDevicesFile = fmt.Sprint(currDir, "\\failed_devices_", time.Now().Format("2006-01-02T15-04-05"), ".csv")
+	}
+
+	f, err := os.OpenFile(failedDevicesFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	defer f.Close()
+
+	if _, err := f.WriteString(fileContents); err != nil {
+		return err
+	}
+
+	return nil
 }

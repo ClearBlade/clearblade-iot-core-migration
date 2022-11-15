@@ -16,8 +16,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"os"
-	"time"
 )
 
 var fields = &fieldmaskpb.FieldMask{
@@ -217,6 +215,8 @@ func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, cli
 func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}) {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
 	i := 0
+	fileContents := ""
+
 	for _, device := range devices {
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progressbar: ", barErr)
@@ -227,16 +227,7 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 			err := updateDevice(device)
 			if err != nil {
 				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
-
-				f, err := os.OpenFile(fmt.Sprint("failed_devices_", time.Now().Format("2006-01-02T15:04:05"), ".csv"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					log.Println(err)
-				}
-
-				defer f.Close()
-				if _, err := f.WriteString(fmt.Sprint(device.Id, "\n")); err != nil {
-					log.Println(err)
-				}
+				fileContents += fmt.Sprint(device.Id, "\n")
 				continue
 			}
 		}
@@ -254,6 +245,12 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", i, "/", len(devices), "devices!", string(colorReset))
 	} else {
 		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", i, "/", len(devices), "devices!", string(colorReset))
+	}
+
+	if fileContents != "" {
+		if err := generateFailedDevicesCSV(fileContents); err != nil {
+			log.Fatalln(err)
+		}
 	}
 }
 

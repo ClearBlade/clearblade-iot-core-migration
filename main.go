@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 )
 
 var (
@@ -70,6 +71,14 @@ func main() {
 	if os.Args[1] == "version" {
 		fmt.Printf("%s\n", cbIotCoreMigrationVersion)
 		os.Exit(0)
+	}
+
+	if runtime.GOOS == "windows" {
+		colorCyan = ""
+		colorReset = ""
+		colorGreen = ""
+		colorYellow = ""
+		colorRed = ""
 	}
 
 	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", string(colorReset))
