@@ -3,10 +3,9 @@ Go tool that migrates devices from Google IoT Core registries to ClearBlade devi
 
 ## Prerequisites
 
-This tools is designed to move devices after you have already enabled the offering in the Google Cloud marketplace and have connected your project. If you haven't done that already, refer to the folowing two links to -  
+This tools is designed to move devices after you have already enabled the offering in the Google Cloud marketplace and have connected your project. If you haven't done that already, refer the folowing documents to -  
 
 1. [Activate Marketplace offering](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2230976570/Google+Cloud+Marketplace+Activation)
-
 2. [Migrating existing registries](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2207449095/Migration+Tutorial)
 
 
@@ -36,11 +35,11 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 
 Install & run the latest binary from https://github.com/ClearBlade/clearblade-iot-core-migration/releases.
 
-**Note - We recommend you to use linux or darwin binaries. It's unlikely but possible something could fail during the migration. A failed_devices CSV file will be created at the end of this migration.  Please submit this file to the [ClearBlade Support](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20) and we will ensure 100% success** 
-
 `clearblade-iot-core-migration -cbSystemKey <SYSTEM_KEY> -gcpServiceAccount <JSON_FILE_PATH> -cbToken <DEV_TOKEN> -gcpRegistryName <IOT_CORE_REGISTRY> -gcpRegistryRegion <GCP_PROJECT_REGION>`
 
 You will be prompted to enter a devices CSV file path that would be used to migrate devices specified in the CSV file. You can skip this step by pressing enter and by default all devices from the registry will be migrated.
+
+**Note - We recommend you to use linux or darwin binaries. It's unlikely but possible something could fail during the migration. A failed_devices CSV file will be created at the end of this migration.  Please submit this file to the [ClearBlade Support](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20) and we will ensure 100% success** 
 
 **Running this tool in a GCloud instance in the same region as your registry will speed up the migration process.**
 
