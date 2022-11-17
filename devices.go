@@ -258,25 +258,26 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 func updateDevice(device *gcpiotpb.Device) error {
 	transformedDevice := map[string]interface{}{
 		"device": transform(device),
-		"name":   device.Id,
-	}
-
-	if Args.updatePublicKeys {
-		transformedDevice["updateMask"] = "credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod"
-	} else {
-		transformedDevice["updateMask"] = "blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod"
 	}
 
 	postBody, _ := json.Marshal(transformedDevice)
 	responseBody := bytes.NewBuffer(postBody)
 
-	url := Args.platformURL + "/api/v/1/code/" + Args.systemKey + "/devicesPatch"
-	req, err := http.NewRequest("POST", url, responseBody)
-
+	url := Args.platformURL + "/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot_devices"
+	req, err := http.NewRequest("PATCH", url, responseBody)
 	req.Header.Set("ClearBlade-UserToken", Args.token)
 	if err != nil {
 		return err
 	}
+
+	q := req.URL.Query()
+	q.Add("name", device.Id)
+	if Args.updatePublicKeys {
+		q.Add("updateMask", "credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
+	} else {
+		q.Add("updateMask", "blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
+	}
+	req.URL.RawQuery = q.Encode()
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -310,7 +311,7 @@ func createDevice(device *gcpiotpb.Device) error {
 	transformedDevice := transform(device)
 	postBody, _ := json.Marshal(transformedDevice)
 	responseBody := bytes.NewBuffer(postBody)
-	url := Args.platformURL + "/api/v/1/code/" + Args.systemKey + "/devicesCreate"
+	url := Args.platformURL + "/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot_devices"
 	req, err := http.NewRequest("POST", url, responseBody)
 	req.Header.Set("ClearBlade-UserToken", Args.token)
 	if err != nil {
