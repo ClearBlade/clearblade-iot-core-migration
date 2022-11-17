@@ -99,11 +99,12 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	exists := registryExistsInClearBlade(ctx, Args.registryName)
+	exists := registryExistsInClearBlade(Args.registryName)
 	if exists {
-		fmt.Print(Args.registryName, " is present in the array.")
+		fmt.Print(Args.registryName, " is already in Clearblade project.")
 	} else {
-		fmt.Print(Args.registryName, " is not present in the array. creating the registry in clearblade ...")
+		fmt.Print(Args.registryName, " is not present in the Clearblade project"+
+			"Creating the registry in clearblade ...")
 	}
 	// Fetch devices from the given registry
 	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
