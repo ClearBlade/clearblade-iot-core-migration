@@ -1,7 +1,6 @@
 package main
 
 import (
-	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	"context"
 	"errors"
 	"flag"
@@ -9,6 +8,8 @@ import (
 	"log"
 	"os"
 	"runtime"
+
+	gcpiotcore "cloud.google.com/go/iot/apiv1"
 )
 
 var (
@@ -29,7 +30,7 @@ type DeviceMigratorArgs struct {
 	token            string
 	systemKey        string
 	cbRegistryRegion string
-
+	platformURLREST  string
 	// GCP IoT Core specific flags
 	serviceAccountFile string
 	registryName       string
@@ -98,6 +99,12 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	exists := registryExistsInClearBlade(ctx, Args.registryName)
+	if exists {
+		fmt.Print(Args.registryName, " is present in the array.")
+	} else {
+		fmt.Print(Args.registryName, " is not present in the array. creating the registry in clearblade ...")
+	}
 	// Fetch devices from the given registry
 	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
 

@@ -2,20 +2,23 @@ package main
 
 import (
 	"bytes"
-	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
-	"google.golang.org/api/iterator"
-	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
-	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
+	"net/url"
+	"os"
+
+	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	"golang.org/x/exp/maps"
+	"google.golang.org/api/iterator"
+	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 var fields = &fieldmaskpb.FieldMask{
@@ -36,6 +39,50 @@ var fields = &fieldmaskpb.FieldMask{
 		"log_level",
 		"metadata",
 		"gateway_config"},
+}
+
+func registryExistsInClearBlade(ctx context.Context, registryName string) bool {
+	base, err := url.Parse("https://iot.clearblade.com/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot")
+	val, _ := getAbsPath(Args.serviceAccountFile)
+	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion + "/registries/" + Args.registryName
+	//Query params
+	params := url.Values{}
+	params.Add("parent", parent)
+	base.RawQuery = params.Encode()
+	req, err := http.NewRequest("GET", base.String(), nil)
+	req.Header.Set("Clearblade-UserToken", Args.token)
+
+	if err != nil {
+		log.Print(err)
+		os.Exit(1)
+		//return err.Error()
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	var data cbRegistries
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error while while requesting registries from clearblade", err)
+		os.Exit(1)
+	}
+	err2 := json.Unmarshal(body, &data)
+	if err2 != nil {
+		fmt.Println("Error while parsing json payload from clearblade", err2)
+		os.Exit(1)
+	}
+	var exists = false
+	for _, registry := range data.DeviceRegistries {
+		if registry.Id == registryName {
+			exists = true
+			break
+		}
+	}
+	return exists
 }
 
 func fetchDevicesFromGoogleIotCore(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {

@@ -57,3 +57,20 @@ type GatewayConfig struct {
 	LastAccessedGatewayId   string `json:"lastAccessedGatewayId,omitempty"`
 	LastAccessedGatewayTime string `json:"lastAccessedGatewayTime,omitempty"`
 }
+
+type cbRegistries struct {
+	//DeviceRegistries []cbRegistry `json:"deviceRegistries"`
+	DeviceRegistries []cbRegistry `json:"deviceRegistries"`
+	NextPageToken    int          `json:"nextPageToken"`
+}
+
+type cbRegistry struct {
+	Id string `json:"id"`
+	//Name string `json:"name"`
+	//Credentials              any    `json:"credentials"`
+	//EventNotificationConfigs any    `json:"eventNotificationConfigs"`
+	//StateNotificationConfig  any    `json:"stateNotificationConfig"`
+	//HttpConfig               any    `json:"httpConfig"`
+	//MqttConfig               any    `json:"mqttConfig"`
+	//LogLevel                 any    `json:"logLevel"`
+}
