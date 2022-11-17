@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,17 +53,63 @@ func cbListRegistries() (error, *http.Response) {
 	params := url.Values{}
 	params.Add("parent", parent)
 	base.RawQuery = params.Encode()
-	req, err := http.NewRequest("GET", base.String(), nil)
+	req, err := http.NewRequest(http.MethodGet, base.String(), nil)
 	req.Header.Set("Clearblade-UserToken", Args.token)
 	if err != nil {
-		log.Print(err, "Error while preparing the request to list registries on clearblade with the following request:", req)
+		log.Print(err, "Error while preparing the request to list registries in clearblade with the following request:", req)
 		os.Exit(1)
 	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Print(err, "Error while listing registries on clearblade with the following request:", req)
+		log.Print(err, "Error while listing registries in clearblade with the following request:", req)
 	}
 	return err, resp
+}
+
+// retrieves list of registries in clearblade by systemKey, gcpRegistryRegion, and projectId.
+// TODO: this is temporary until the GetRegistry is fixed:
+// https://github.com/ClearBlade/clearblade-iot-core-migration/issues/4
+func cbCreateRegistry(pubsubTopicName string) (error, []byte) {
+	fmt.Println("======>Creating registry")
+	base, err := url.Parse("https://iot.clearblade.com/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot")
+	val, _ := getAbsPath(Args.serviceAccountFile)
+	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion
+	//Query params
+	params := url.Values{}
+	params.Add("parent", parent)
+	base.RawQuery = params.Encode()
+
+	registryData := &cbRegistry{
+		Id:                       Args.registryName,
+		Credentials:              make([]string, 0),
+		EventNotificationConfigs: make([]string, 0),
+		//StateNotificationConfig:  "{\"pubsubTopicName\":" + pubsubTopicName + "\"}", //TODO: populate this part from the user input
+		StateNotificationConfig: &stateNotificationConfig{PubsubTopicName: ""}, //TODO: populate this part from the user input
+		HttpConfig:              &httpEnabledState{HttpEnabledState: "HTTP_ENABLED"},
+		MqttConfig:              &mqttEnabledState{MqttEnabledState: "MQTT_ENABLED"},
+		LogLevel:                "NONE",
+	}
+	jsonBody, _ := json.Marshal(registryData)
+	req, err := http.NewRequest(http.MethodPost, base.String(), bytes.NewBuffer(jsonBody))
+	req.Header.Set("Clearblade-UserToken", Args.token)
+	if err != nil {
+		log.Print(err, "Error while preparing the request to create registry in clearblade with the following request:", req)
+		os.Exit(1)
+	}
+
+	fmt.Println("====================> ", req)
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Print(err, "Error while listing registries on clearblade with the following request:", req)
+	}
+	x, _ := io.ReadAll(resp.Body)
+	fmt.Println("====> response:", string(x))
+	if err != nil {
+		log.Print(err, "Error while creating registry on clearblade with the following request:", req)
+	}
+
+	return err, x
 }

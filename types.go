@@ -59,18 +59,29 @@ type GatewayConfig struct {
 }
 
 type cbRegistries struct {
-	//DeviceRegistries []cbRegistry `json:"deviceRegistries"`
 	DeviceRegistries []cbRegistry `json:"deviceRegistries"`
 	NextPageToken    int          `json:"nextPageToken"`
 }
 
 type cbRegistry struct {
-	Id string `json:"id"`
-	//Name string `json:"name"`
-	//Credentials              any    `json:"credentials"`
-	//EventNotificationConfigs any    `json:"eventNotificationConfigs"`
-	//StateNotificationConfig  any    `json:"stateNotificationConfig"`
-	//HttpConfig               any    `json:"httpConfig"`
-	//MqttConfig               any    `json:"mqttConfig"`
-	//LogLevel                 any    `json:"logLevel"`
+	Id                       string                   `json:"id"`
+	Name                     string                   `json:"name,omitempty"`
+	Credentials              any                      `json:"credentials"`
+	EventNotificationConfigs any                      `json:"eventNotificationConfigs"`
+	StateNotificationConfig  *stateNotificationConfig `json:"stateNotificationConfig"`
+	HttpConfig               *httpEnabledState        `json:"httpConfig"`
+	MqttConfig               *mqttEnabledState        `json:"mqttConfig"`
+	LogLevel                 any                      `json:"logLevel"`
+}
+
+type stateNotificationConfig struct {
+	PubsubTopicName string `json:"pubsubTopicName"`
+}
+
+type httpEnabledState struct {
+	HttpEnabledState string `json:"httpEnabledState"`
+}
+
+type mqttEnabledState struct {
+	MqttEnabledState string `json:"mqttEnabledState"`
 }

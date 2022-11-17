@@ -103,8 +103,9 @@ func main() {
 	if exists {
 		log.Println(Args.registryName, " is already in Clearblade project.")
 	} else {
-		log.Fatalln(Args.registryName, " registry is not present in the Clearblade project. "+
-			"Please create the registry in clearblade then retry")
+		fmt.Println(Args.registryName, " registry is not present in the Clearblade project. "+
+			"Please create the registry in clearblade then retry!")
+		cbCreateRegistry("foo")
 		os.Exit(1)
 		//TODO: next, create the registry through an API call
 	}
