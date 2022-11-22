@@ -46,7 +46,7 @@ func parseListRegistriesJson(err error, resp *http.Response) cbRegistries {
 // TODO: this is temporary until the GetRegistry is fixed:
 // https://github.com/ClearBlade/clearblade-iot-core-migration/issues/4
 func cbListRegistries() (error, *http.Response) {
-	base, err := url.Parse("https://iot.clearblade.com/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot")
+	base, err := url.Parse(iot_endpoint + Args.systemKey + "/cloudiot")
 	val, _ := getAbsPath(Args.serviceAccountFile)
 	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion
 	//Query params
@@ -72,8 +72,8 @@ func cbListRegistries() (error, *http.Response) {
 // TODO: this is temporary until the GetRegistry is fixed:
 // https://github.com/ClearBlade/clearblade-iot-core-migration/issues/4
 func cbCreateRegistry(pubsubTopicName string) (error, []byte) {
-	fmt.Println("======>Creating registry")
-	base, err := url.Parse("https://iot.clearblade.com/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot")
+	fmt.Println(" Attempting to creating registry", Args.registryName)
+	base, err := url.Parse(iot_endpoint + Args.systemKey + "/cloudiot")
 	val, _ := getAbsPath(Args.serviceAccountFile)
 	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion
 	//Query params
@@ -99,17 +99,13 @@ func cbCreateRegistry(pubsubTopicName string) (error, []byte) {
 		os.Exit(1)
 	}
 
-	fmt.Println("====================> ", req)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Print(err, "Error while listing registries on clearblade with the following request:", req)
+		os.Exit(1)
 	}
-	x, _ := io.ReadAll(resp.Body)
-	fmt.Println("====> response:", string(x))
-	if err != nil {
-		log.Print(err, "Error while creating registry on clearblade with the following request:", req)
-	}
-
-	return err, x
+	response, _ := io.ReadAll(resp.Body)
+	fmt.Println(" Registry created: ", response)
+	return err, response
 }

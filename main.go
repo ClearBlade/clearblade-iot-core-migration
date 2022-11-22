@@ -106,8 +106,7 @@ func main() {
 		fmt.Println(Args.registryName, " registry is not present in the Clearblade project. "+
 			"Please create the registry in clearblade then retry!")
 		cbCreateRegistry("foo")
-		os.Exit(1)
-		//TODO: next, create the registry through an API call
+		//TODO: next, create the pubsubTopicName from the user input and pass it to the createRegistry
 	}
 	// Fetch devices from the given registry
 	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
