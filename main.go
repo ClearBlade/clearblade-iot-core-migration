@@ -103,18 +103,19 @@ func main() {
 	if exists {
 		log.Println(Args.registryName, " is already in Clearblade project.")
 	} else {
-		fmt.Println(Args.registryName, " registry is not present in the Clearblade project. "+
-			"Please create the registry in clearblade then retry!")
+		fmt.Println(Args.registryName, " registry is not present in the Clearblade project.")
 		cbCreateRegistry("foo")
 		//TODO: next, create the pubsubTopicName from the user input and pass it to the createRegistry
 	}
+
+	registryCredentials := fetchRegistryCredentials(Args.registryName)
 	// Fetch devices from the given registry
 	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
 
 	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
 
 	// Add fetched devices to ClearBlade Device table
-	addDevicesToClearBlade(devices, deviceConfigs)
+	addDevicesToClearBladeByRegistry(devices, deviceConfigs, registryCredentials)
 
 	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
 

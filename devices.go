@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
@@ -367,6 +368,179 @@ func updateConfigHistory(deviceConfigs map[string]interface{}) error {
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	jsonStr := string(body)
+	var jsonMap map[string]interface{}
+
+	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
+		// log.Fatalln("Unable to unmarshall JSON: ", err)
+		return errors.New(jsonStr)
+	}
+
+	if jsonMap["error"] != nil {
+		return errors.New(jsonStr)
+	}
+
+	return nil
+}
+
+func addDevicesToClearBladeByRegistry(devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}, cbRegistryCredentials cbRegistryCredentials) {
+	bar := getProgressBar(len(devices), "Migrating Devices...")
+	i := 0
+	fileContents := ""
+
+	for _, device := range devices {
+		if barErr := bar.Add(1); barErr != nil {
+			log.Fatalln("Unable to add to progressbar: ", barErr)
+		}
+
+		err := createDeviceByRegistry(device, cbRegistryCredentials)
+		if err != nil {
+			err := updateDeviceByRegistry(device, cbRegistryCredentials)
+			if err != nil {
+				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
+				fileContents += fmt.Sprint(device.Id, "\n")
+				continue
+			}
+		}
+		i += 1
+	}
+
+	if len(deviceConfigs) != 0 {
+		err := updateConfigHistoryByRegistry(deviceConfigs, cbRegistryCredentials)
+		if err != nil {
+			fmt.Println(string(colorRed), "\n\n\u2715 Unable to update config version history! Reason: ", err, string(colorReset))
+		}
+	}
+
+	if i == len(devices) {
+		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", i, "/", len(devices), "devices!", string(colorReset))
+	} else {
+		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", i, "/", len(devices), "devices!", string(colorReset))
+	}
+
+	if fileContents != "" {
+		if err := generateFailedDevicesCSV(fileContents); err != nil {
+			log.Fatalln(err)
+		}
+	}
+}
+
+func createDeviceByRegistry(device *gcpiotpb.Device, cbRegistryCredentials cbRegistryCredentials) error {
+	transformedDevice := transform(device)
+	postBody, _ := json.Marshal(transformedDevice)
+	responseBody := bytes.NewBuffer(postBody)
+	url := Args.platformURL + "/api/v/4/webhook/execute/" + cbRegistryCredentials.SystemKey + "/cloudiot_devices"
+	req, err := http.NewRequest("POST", url, responseBody)
+	req.Header.Set("ClearBlade-UserToken", cbRegistryCredentials.ServiceAccountToken)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	jsonStr := string(body)
+	var jsonMap map[string]interface{}
+
+	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
+		// log.Fatalln("Unable to unmarshall JSON: ", err)
+		return errors.New(jsonStr)
+	}
+
+	if jsonMap["error"] != nil {
+		return errors.New(jsonStr)
+	}
+
+	return nil
+}
+
+func updateDeviceByRegistry(device *gcpiotpb.Device, credentials cbRegistryCredentials) error {
+	transformedDevice := map[string]interface{}{
+		"device": transform(device),
+	}
+
+	postBody, _ := json.Marshal(transformedDevice)
+	responseBody := bytes.NewBuffer(postBody)
+
+	url := Args.platformURL + "/api/v/4/webhook/execute/" + credentials.SystemKey + "/cloudiot_devices"
+	req, err := http.NewRequest("PATCH", url, responseBody)
+	req.Header.Set("ClearBlade-UserToken", credentials.ServiceAccountToken)
+	if err != nil {
+		return err
+	}
+
+	q := req.URL.Query()
+	q.Add("name", device.Id)
+	if Args.updatePublicKeys {
+		q.Add("updateMask", "credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
+	} else {
+		q.Add("updateMask", "blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
+	}
+	req.URL.RawQuery = q.Encode()
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	jsonStr := string(body)
+	var jsonMap map[string]interface{}
+
+	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
+		// log.Fatalln("Unable to unmarshall JSON: ", err)
+		return errors.New(jsonStr)
+	}
+
+	if jsonMap["error"] != nil {
+		return errors.New(jsonStr)
+	}
+
+	return nil
+}
+
+func updateConfigHistoryByRegistry(deviceConfigs map[string]interface{}, credentials cbRegistryCredentials) error {
+	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}
+	postBody, _ := json.Marshal(transformedDeviceConfigHistory)
+	responseBody := bytes.NewBuffer(postBody)
+
+	url := Args.platformURL + "/api/v/1/code/" + credentials.SystemKey + "/devicesConfigHistoryUpdate"
+	req, err := http.NewRequest("POST", url, responseBody)
+	req.Header.Set("ClearBlade-UserToken", credentials.ServiceAccountToken)
+	if err != nil {
+		return err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}

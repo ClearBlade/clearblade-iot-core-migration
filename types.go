@@ -85,3 +85,15 @@ type httpEnabledState struct {
 type mqttEnabledState struct {
 	MqttEnabledState string `json:"mqttEnabledState"`
 }
+
+type cbRegistryCredentials struct {
+	SystemKey           string `json:"systemKey"`
+	ServiceAccountToken string `json:"serviceAccountToken"`
+	Url                 string `json:"url"`
+}
+
+type cbSystemCredentials struct {
+	Project  string `json:"project"`
+	Region   string `json:"region"`
+	Registry string `json:"registry"`
+}
