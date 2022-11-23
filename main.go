@@ -37,16 +37,20 @@ type DeviceMigratorArgs struct {
 	gcpRegistryRegion  string
 
 	// Optional flags
-	devicesCsvFile   string
-	configHistory    bool
-	sandbox          bool
-	updatePublicKeys bool
+	devicesCsvFile       string
+	configHistory        bool
+	sandbox              bool
+	updatePublicKeys     bool
+	pubsubTopicNameEvent string
+	pubsubTopicNameState string
 }
 
 func initMigrationFlags() {
 	flag.StringVar(&Args.token, "cbToken", "", "ClearBlade User Token (Required)")
 	flag.StringVar(&Args.systemKey, "cbSystemKey", "", "ClearBlade System Key (Required)")
 	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Registry Region (Optional)")
+	flag.StringVar(&Args.pubsubTopicNameEvent, "cbPubsubTopicNameEvent", "", "ClearBlade PubsubTopicName Event used in the registry creation (Optional)")
+	flag.StringVar(&Args.pubsubTopicNameState, "cbPubsubTopicNameState", "", "ClearBlade PubsubTopicName State used in the registry creation (Optional)")
 
 	flag.StringVar(&Args.serviceAccountFile, "gcpServiceAccount", "", "Service account file path (Required)")
 	flag.StringVar(&Args.registryName, "gcpRegistryName", "", "Google Registry Name (Required)")
@@ -104,8 +108,7 @@ func main() {
 		log.Println(Args.registryName, " is already in Clearblade project.")
 	} else {
 		fmt.Println(Args.registryName, " registry is not present in the Clearblade project.")
-		cbCreateRegistry("foo")
-		//TODO: next, create the pubsubTopicName from the user input and pass it to the createRegistry
+		cbCreateRegistry(Args.pubsubTopicNameEvent, Args.pubsubTopicNameState)
 	}
 
 	registryCredentials := fetchRegistryCredentials(Args.registryName)

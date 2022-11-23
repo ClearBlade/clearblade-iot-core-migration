@@ -64,11 +64,13 @@ type cbRegistries struct {
 }
 
 type cbRegistry struct {
-	Id                       string                   `json:"id"`
-	Name                     string                   `json:"name,omitempty"`
-	Credentials              any                      `json:"credentials"`
+	Id          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Credentials any    `json:"credentials"`
+	//TODO(charbull): fix the marshalling
+	//EventNotificationConfigs *eventNotificationConfigs `json:"eventNotificationConfigs,omitempty"`
 	EventNotificationConfigs any                      `json:"eventNotificationConfigs"`
-	StateNotificationConfig  *stateNotificationConfig `json:"stateNotificationConfig"`
+	StateNotificationConfig  *stateNotificationConfig `json:"stateNotificationConfig,omitempty"`
 	HttpConfig               *httpEnabledState        `json:"httpConfig"`
 	MqttConfig               *mqttEnabledState        `json:"mqttConfig"`
 	LogLevel                 any                      `json:"logLevel"`
@@ -77,6 +79,11 @@ type cbRegistry struct {
 type stateNotificationConfig struct {
 	PubsubTopicName string `json:"pubsubTopicName"`
 }
+
+//type eventNotificationConfigs struct {
+//	PubsubTopicName  string      `json:"pubsubTopicName"`
+//	SubfolderMatches interface{} `json:"subfolderMatches,omitempty"`
+//}
 
 type httpEnabledState struct {
 	HttpEnabledState string `json:"httpEnabledState"`

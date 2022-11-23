@@ -71,7 +71,7 @@ func cbListRegistries() (error, *http.Response) {
 // retrieves list of registries in clearblade by systemKey, gcpRegistryRegion, and projectId.
 // TODO: this is temporary until the GetRegistry is fixed:
 // https://github.com/ClearBlade/clearblade-iot-core-migration/issues/4
-func cbCreateRegistry(pubsubTopicName string) (error, []byte) {
+func cbCreateRegistry(pubsubTopicNameEvent string, pubsubTopicNameState string) (error, []byte) {
 	fmt.Println(" Attempting to create the following registry", Args.registryName)
 	base, err := url.Parse(iot_endpoint + Args.systemKey + "/cloudiot")
 	val, _ := getAbsPath(Args.serviceAccountFile)
@@ -85,8 +85,8 @@ func cbCreateRegistry(pubsubTopicName string) (error, []byte) {
 		Id:                       Args.registryName,
 		Credentials:              make([]string, 0),
 		EventNotificationConfigs: make([]string, 0),
-		//StateNotificationConfig:  "{\"pubsubTopicName\":" + pubsubTopicName + "\"}", //TODO: populate this part from the user input
-		StateNotificationConfig: &stateNotificationConfig{PubsubTopicName: ""}, //TODO: populate this part from the user input
+		//EventNotificationConfigs: &eventNotificationConfigs{PubsubTopicName: pubsubTopicNameEvent, SubfolderMatches: ""},
+		StateNotificationConfig: &stateNotificationConfig{PubsubTopicName: pubsubTopicNameState},
 		HttpConfig:              &httpEnabledState{HttpEnabledState: "HTTP_ENABLED"},
 		MqttConfig:              &mqttEnabledState{MqttEnabledState: "MQTT_ENABLED"},
 		LogLevel:                "NONE",
