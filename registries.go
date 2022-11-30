@@ -36,7 +36,7 @@ func parseListRegistriesJson(err error, resp *http.Response) cbRegistries {
 	}
 	err2 := json.Unmarshal(body, &data)
 	if err2 != nil {
-		fmt.Println("Error while parsing json payload from clearblade", err2)
+		fmt.Printf("Error [%s] while parsing json payload Listregistries response [%s] from clearblade\n", err2, body)
 		os.Exit(1)
 	}
 	return data
@@ -81,15 +81,19 @@ func cbCreateRegistry(pubsubTopicNameEvent string, pubsubTopicNameState string) 
 	params.Add("parent", parent)
 	base.RawQuery = params.Encode()
 
-	registryData := &cbRegistry{
+	eventConfig := []eventNotificationConfig{{
+		PubsubTopicName: pubsubTopicNameEvent,
+	},
+	}
+
+	var registryData = &cbRegistry{
 		Id:                       Args.registryName,
 		Credentials:              make([]string, 0),
-		EventNotificationConfigs: make([]string, 0),
-		//EventNotificationConfigs: &eventNotificationConfigs{PubsubTopicName: pubsubTopicNameEvent, SubfolderMatches: ""},
-		StateNotificationConfig: &stateNotificationConfig{PubsubTopicName: pubsubTopicNameState},
-		HttpConfig:              &httpEnabledState{HttpEnabledState: "HTTP_ENABLED"},
-		MqttConfig:              &mqttEnabledState{MqttEnabledState: "MQTT_ENABLED"},
-		LogLevel:                "NONE",
+		EventNotificationConfigs: eventConfig,
+		StateNotificationConfig:  &stateNotificationConfig{PubsubTopicName: pubsubTopicNameState},
+		HttpConfig:               &httpEnabledState{HttpEnabledState: "HTTP_ENABLED"},
+		MqttConfig:               &mqttEnabledState{MqttEnabledState: "MQTT_ENABLED"},
+		LogLevel:                 "NONE",
 	}
 	jsonBody, _ := json.Marshal(registryData)
 	req, err := http.NewRequest(http.MethodPost, base.String(), bytes.NewBuffer(jsonBody))
@@ -160,7 +164,7 @@ func parseGetCbRegistryJson(err error, resp *http.Response) cbRegistryCredential
 	}
 	err2 := json.Unmarshal(body, &data)
 	if err2 != nil {
-		fmt.Println("Error while parsing json payload from clearblade", err2)
+		fmt.Printf("Error [%s] while parsing json payload registry response [%s] from clearblade\n", err2, body)
 		os.Exit(1)
 	}
 	log.Println("Fetched credentials from clearblade")
