@@ -103,3 +103,29 @@ type cbSystemCredentials struct {
 	Region   string `json:"region"`
 	Registry string `json:"registry"`
 }
+
+//type iotRegistry struct {
+//	Id                          string                       `json:"id"`
+//	Name                        string                       `json:"name"`
+//	gcpStateNotificationConfig  *gcpStateNotificationConfig  `json:"state_notification_config:,omitempty"`
+//	gcpEventNotificationConfigs []gcpEventNotificationConfig `json:"event_notification_configs:,omitempty"`
+//	gcpHttpConfig               *gcpHttpEnabledState         `json:"http_config:"`
+//	gcpMqttConfig               *gcpMqttEnabledState         `json:"mqtt_config:"`
+//}
+
+type gcpStateNotificationConfig struct {
+	PubsubTopicName string `json:"pubsub_topic_name"`
+}
+
+type gcpEventNotificationConfig struct {
+	PubsubTopicName  string      `json:"pubsub_topic_name"`
+	SubfolderMatches interface{} `json:"subfolder_matches:,omitempty"`
+}
+
+type gcpHttpEnabledState struct {
+	gcpHttpEnabledState string `json:"http_enabled_state"`
+}
+
+type gcpMqttEnabledState struct {
+	MqttEnabledState string `json:"mqtt_enabled_state"`
+}

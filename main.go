@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
 )
@@ -94,13 +95,20 @@ func main() {
 	// Validate if all required CB flags are provided
 	validateCBFlags()
 
-	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 All Flags validated!", string(colorReset))
 
 	// Authenticate GCP service user and Clearblade User account
 	ctx, gcpClient, err := authenticate()
 
 	if err != nil {
 		log.Fatalln(err)
+	}
+	//TODO(charbull): refactor here when the user provides `ALL` fetch the registry list from iot core and create in clearblade
+	if strings.ToLower(Args.registryName) == "all" {
+		fmt.Println(" Migrating all registries from Cloud IoT Core to Clearblade ... ")
+		cbRegistries := gcpListAllRegistries(ctx, gcpClient)
+		fmt.Printf("", cbRegistries)
+		os.Exit(1)
 	}
 
 	exists := registryExistsInClearBlade(Args.registryName)

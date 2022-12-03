@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +11,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+
+	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	"google.golang.org/api/iterator"
+	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 )
 
 // returns true if a registryName exists in the Clearblade project and region.
@@ -169,4 +174,49 @@ func parseGetCbRegistryJson(err error, resp *http.Response) cbRegistryCredential
 	}
 	log.Println("Fetched credentials from clearblade")
 	return data
+}
+
+// TODO(charbull)
+// https://pkg.go.dev/cloud.google.com/go/iot/apiv1#example-DeviceManagerClient.ListDeviceRegistries
+// https://pkg.go.dev/cloud.google.com/go/iot/apiv1/iotpb#ListDeviceRegistriesRequest
+func gcpListAllRegistries(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) []cbRegistry {
+	val, _ := getAbsPath(Args.serviceAccountFile)
+	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion
+	req := &gcpiotpb.ListDeviceRegistriesRequest{
+		Parent:   parent,
+		PageSize: 300, //get all the registries, this can be optimized for projects with more than those registries.
+	}
+
+	it := gcpClient.ListDeviceRegistries(ctx, req)
+	iotRegistries := []cbRegistry{}
+
+	for {
+		resp, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			// TODO: Handle error.
+			fmt.Printf("Err:[%s].\n", err)
+		}
+		// TODO: continue the structure copy
+		//fmt.Printf("IOTCORE:", resp)
+		var eventNotificationConfigs []eventNotificationConfig
+		for _, currentEventNotificationConfig := range resp.EventNotificationConfigs {
+			eventNotificationConfig := eventNotificationConfig{}
+			eventNotificationConfig.PubsubTopicName = currentEventNotificationConfig.PubsubTopicName
+			eventNotificationConfig.SubfolderMatches = currentEventNotificationConfig.SubfolderMatches
+			eventNotificationConfigs = append(eventNotificationConfigs, eventNotificationConfig)
+		}
+
+		iotRegistries = append(iotRegistries, cbRegistry{
+			Id:                       resp.Id,
+			Name:                     resp.Name,
+			LogLevel:                 resp.LogLevel,
+			Credentials:              "",
+			EventNotificationConfigs: eventNotificationConfigs,
+		})
+	}
+	gcpClient.Close()
+	return iotRegistries
 }
