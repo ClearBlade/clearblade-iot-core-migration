@@ -57,3 +57,75 @@ type GatewayConfig struct {
 	LastAccessedGatewayId   string `json:"lastAccessedGatewayId,omitempty"`
 	LastAccessedGatewayTime string `json:"lastAccessedGatewayTime,omitempty"`
 }
+
+type cbRegistries struct {
+	DeviceRegistries []cbRegistry `json:"deviceRegistries"`
+	NextPageToken    int          `json:"nextPageToken"`
+}
+
+type cbRegistry struct {
+	Id                       string                    `json:"id"`
+	Name                     string                    `json:"name,omitempty"`
+	Credentials              any                       `json:"credentials"`
+	EventNotificationConfigs []eventNotificationConfig `json:"eventNotificationConfigs,omitempty"`
+	//EventNotificationConfigs any                      `json:"eventNotificationConfigs"`
+	StateNotificationConfig *stateNotificationConfig `json:"stateNotificationConfig,omitempty"`
+	HttpConfig              *httpEnabledState        `json:"httpConfig"`
+	MqttConfig              *mqttEnabledState        `json:"mqttConfig"`
+	LogLevel                any                      `json:"logLevel"`
+}
+
+type stateNotificationConfig struct {
+	PubsubTopicName string `json:"pubsubTopicName"`
+}
+
+type eventNotificationConfig struct {
+	PubsubTopicName  string      `json:"pubsubTopicName"`
+	SubfolderMatches interface{} `json:"subfolderMatches,omitempty"`
+}
+
+type httpEnabledState struct {
+	HttpEnabledState string `json:"httpEnabledState"`
+}
+
+type mqttEnabledState struct {
+	MqttEnabledState string `json:"mqttEnabledState"`
+}
+
+type cbRegistryCredentials struct {
+	SystemKey           string `json:"systemKey"`
+	ServiceAccountToken string `json:"serviceAccountToken"`
+	Url                 string `json:"url"`
+}
+
+type cbSystemCredentials struct {
+	Project  string `json:"project"`
+	Region   string `json:"region"`
+	Registry string `json:"registry"`
+}
+
+//type iotRegistry struct {
+//	Id                          string                       `json:"id"`
+//	Name                        string                       `json:"name"`
+//	gcpStateNotificationConfig  *gcpStateNotificationConfig  `json:"state_notification_config:,omitempty"`
+//	gcpEventNotificationConfigs []gcpEventNotificationConfig `json:"event_notification_configs:,omitempty"`
+//	gcpHttpConfig               *gcpHttpEnabledState         `json:"http_config:"`
+//	gcpMqttConfig               *gcpMqttEnabledState         `json:"mqtt_config:"`
+//}
+
+type gcpStateNotificationConfig struct {
+	PubsubTopicName string `json:"pubsub_topic_name"`
+}
+
+type gcpEventNotificationConfig struct {
+	PubsubTopicName  string      `json:"pubsub_topic_name"`
+	SubfolderMatches interface{} `json:"subfolder_matches:,omitempty"`
+}
+
+type gcpHttpEnabledState struct {
+	gcpHttpEnabledState string `json:"http_enabled_state"`
+}
+
+type gcpMqttEnabledState struct {
+	MqttEnabledState string `json:"mqtt_enabled_state"`
+}

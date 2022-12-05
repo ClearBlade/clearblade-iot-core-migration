@@ -1,7 +1,6 @@
 package main
 
 import (
-	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	"context"
 	"errors"
 	"flag"
@@ -9,6 +8,9 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
+
+	gcpiotcore "cloud.google.com/go/iot/apiv1"
 )
 
 var (
@@ -29,23 +31,27 @@ type DeviceMigratorArgs struct {
 	token            string
 	systemKey        string
 	cbRegistryRegion string
-
+	platformURLREST  string
 	// GCP IoT Core specific flags
 	serviceAccountFile string
 	registryName       string
 	gcpRegistryRegion  string
 
 	// Optional flags
-	devicesCsvFile   string
-	configHistory    bool
-	sandbox          bool
-	updatePublicKeys bool
+	devicesCsvFile       string
+	configHistory        bool
+	sandbox              bool
+	updatePublicKeys     bool
+	pubsubTopicNameEvent string
+	pubsubTopicNameState string
 }
 
 func initMigrationFlags() {
 	flag.StringVar(&Args.token, "cbToken", "", "ClearBlade User Token (Required)")
 	flag.StringVar(&Args.systemKey, "cbSystemKey", "", "ClearBlade System Key (Required)")
 	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Registry Region (Optional)")
+	flag.StringVar(&Args.pubsubTopicNameEvent, "cbPubsubTopicNameEvent", "", "ClearBlade PubsubTopicName Event used in the registry creation (Optional)")
+	flag.StringVar(&Args.pubsubTopicNameState, "cbPubsubTopicNameState", "", "ClearBlade PubsubTopicName State used in the registry creation (Optional)")
 
 	flag.StringVar(&Args.serviceAccountFile, "gcpServiceAccount", "", "Service account file path (Required)")
 	flag.StringVar(&Args.registryName, "gcpRegistryName", "", "Google Registry Name (Required)")
@@ -89,7 +95,7 @@ func main() {
 	// Validate if all required CB flags are provided
 	validateCBFlags()
 
-	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 All Flags validated!", string(colorReset))
 
 	// Authenticate GCP service user and Clearblade User account
 	ctx, gcpClient, err := authenticate()
@@ -97,17 +103,69 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+	//TODO(charbull): refactor here when the user provides `ALL` fetch the registry list from iot core and create in clearblade
+	if strings.ToLower(Args.registryName) == "all" {
+		fmt.Println(" Migrating all registries from Cloud IoT Core to Clearblade ... ")
+		cbRegistries := gcpListAllRegistries(ctx, gcpClient)
+		for i, cbRegistry := range cbRegistries {
+			fmt.Printf("Migrating Registry# %d of %d\n", (i + 1), len(cbRegistries))
+			migrateIoTRegistryFromRegistry(ctx, gcpClient, cbRegistry)
+		}
+		gcpClient.Close()
+	} else if strings.Contains(Args.registryName, ",") {
+		registryNames := strings.Split(Args.registryName, ",")
+		//This is dirty hack
+		for i, registryName := range registryNames {
+			fmt.Printf("Migrating Registry# %d of %d\n", (i + 1), len(registryNames))
+			Args.registryName = strings.TrimSpace(registryName)
+			migrateIoTRegistry(ctx, gcpClient)
+		}
+	} else {
+		migrateIoTRegistry(ctx, gcpClient)
+	}
 
+}
+
+func migrateIoTRegistryFromRegistry(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient, registry cbRegistry) {
+	exists := registryExistsInClearBlade(registry.Id)
+	if exists {
+		log.Println(registry.Id, " is already in Clearblade project.")
+	} else {
+		fmt.Println(registry.Id, " registry is not present in the Clearblade project.")
+		cbCreateRegistryFrom(registry)
+	}
+
+	registryCredentials := fetchRegistryCredentials(registry.Id)
+	// Fetch devices from the given registry
+	devices, deviceConfigs := fetchDevicesFromGoogleIotCoreWithRegistry(ctx, gcpClient, registry)
+
+	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
+
+	// Add fetched devices to ClearBlade Device table
+	addDevicesToClearBladeByRegistry(devices, deviceConfigs, registryCredentials)
+
+	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
+}
+
+func migrateIoTRegistry(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) {
+	exists := registryExistsInClearBlade(Args.registryName)
+	if exists {
+		log.Println(Args.registryName, " is already in Clearblade project.")
+	} else {
+		fmt.Println(Args.registryName, " registry is not present in the Clearblade project.")
+		cbCreateRegistry(Args.pubsubTopicNameEvent, Args.pubsubTopicNameState)
+	}
+
+	registryCredentials := fetchRegistryCredentials(Args.registryName)
 	// Fetch devices from the given registry
 	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
 
 	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
 
 	// Add fetched devices to ClearBlade Device table
-	addDevicesToClearBlade(devices, deviceConfigs)
+	addDevicesToClearBladeByRegistry(devices, deviceConfigs, registryCredentials)
 
 	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
-
 }
 
 func validateCBFlags() {

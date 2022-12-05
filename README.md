@@ -71,3 +71,16 @@ In order to release a new version, the following steps need to be performed:
 
 
 If you have any questions or errors using this tool, please feel free to open tickets on our [IoT Core Support Desk](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20)
+
+
+## Bulk migrations
+The tool is extended to support several registries migration. 
+### Several Registries
+In order to migrate several registries from cloud iot core, please provide a comma separated registry ids list when prompted: `Enter Google Registry Name:`. For example: `REGISTRY-1`, `REGISTRY-2`
+
+
+### ALL Registries
+In order to migrate All registries from cloud iot core, please type `all`when prompted: `Enter Google Registry Name:`.
+
+### Enhancements
+If a registry already exists in Clearblade, it is skipped. As an extension, the devices could be checked and then apply what is in Cloud IoT Core to Clearblade
