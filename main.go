@@ -107,10 +107,47 @@ func main() {
 	if strings.ToLower(Args.registryName) == "all" {
 		fmt.Println(" Migrating all registries from Cloud IoT Core to Clearblade ... ")
 		cbRegistries := gcpListAllRegistries(ctx, gcpClient)
-		fmt.Printf("", cbRegistries)
-		os.Exit(1)
+		for i, cbRegistry := range cbRegistries {
+			fmt.Printf("Migrating Registry# %d of %d\n", (i + 1), len(cbRegistries))
+			migrateIoTRegistryFromRegistry(ctx, gcpClient, cbRegistry)
+		}
+		gcpClient.Close()
+	} else if strings.Contains(Args.registryName, ",") {
+		registryNames := strings.Split(Args.registryName, ",")
+		//This is dirty hack
+		for i, registryName := range registryNames {
+			fmt.Printf("Migrating Registry# %d of %d\n", (i + 1), len(registryNames))
+			Args.registryName = strings.TrimSpace(registryName)
+			migrateIoTRegistry(ctx, gcpClient)
+		}
+	} else {
+		migrateIoTRegistry(ctx, gcpClient)
 	}
 
+}
+
+func migrateIoTRegistryFromRegistry(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient, registry cbRegistry) {
+	exists := registryExistsInClearBlade(registry.Id)
+	if exists {
+		log.Println(registry.Id, " is already in Clearblade project.")
+	} else {
+		fmt.Println(registry.Id, " registry is not present in the Clearblade project.")
+		cbCreateRegistryFrom(registry)
+	}
+
+	registryCredentials := fetchRegistryCredentials(registry.Id)
+	// Fetch devices from the given registry
+	devices, deviceConfigs := fetchDevicesFromGoogleIotCoreWithRegistry(ctx, gcpClient, registry)
+
+	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
+
+	// Add fetched devices to ClearBlade Device table
+	addDevicesToClearBladeByRegistry(devices, deviceConfigs, registryCredentials)
+
+	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
+}
+
+func migrateIoTRegistry(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) {
 	exists := registryExistsInClearBlade(Args.registryName)
 	if exists {
 		log.Println(Args.registryName, " is already in Clearblade project.")
@@ -129,7 +166,6 @@ func main() {
 	addDevicesToClearBladeByRegistry(devices, deviceConfigs, registryCredentials)
 
 	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
-
 }
 
 func validateCBFlags() {

@@ -17,13 +17,13 @@ import (
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 )
 
-// returns true if a registryName exists in the Clearblade project and region.
-func registryExistsInClearBlade(registryName string) bool {
+// returns true if a registryId exists in the Clearblade project and region.
+func registryExistsInClearBlade(registryId string) bool {
 	err, resp := cbListRegistries()
 	cbRegistries := parseListRegistriesJson(err, resp)
 	var exists = false
 	for _, registry := range cbRegistries.DeviceRegistries {
-		if registry.Id == registryName {
+		if registry.Id == registryId {
 			exists = true
 			break
 		}
@@ -71,6 +71,40 @@ func cbListRegistries() (error, *http.Response) {
 		log.Print(err, "Error while listing registries in clearblade with the following request:", req)
 	}
 	return err, resp
+}
+
+// retrieves list of registries in clearblade by systemKey, gcpRegistryRegion, and projectId.
+// TODO: this is temporary until the GetRegistry is fixed:
+// https://github.com/ClearBlade/clearblade-iot-core-migration/issues/4
+func cbCreateRegistryFrom(cbRegistryToCreate cbRegistry) (error, []byte) {
+	fmt.Println(" Attempting to create the following registry", cbRegistryToCreate.Id)
+	base, err := url.Parse(iot_endpoint + Args.systemKey + "/cloudiot")
+	val, _ := getAbsPath(Args.serviceAccountFile)
+	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion
+	//Query params
+	params := url.Values{}
+	params.Add("parent", parent)
+	base.RawQuery = params.Encode()
+	//Set this to empty, otherwise CB will reject the call
+	cbRegistryToCreate.Name = ""
+
+	jsonBody, _ := json.Marshal(cbRegistryToCreate)
+	req, err := http.NewRequest(http.MethodPost, base.String(), bytes.NewBuffer(jsonBody))
+	req.Header.Set("Clearblade-UserToken", Args.token)
+	if err != nil {
+		log.Print(err, "Error while preparing the request to create registry in clearblade with the following request:", req)
+		os.Exit(1)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Print(err, "Error while listing registries on clearblade with the following request:", req)
+		os.Exit(1)
+	}
+	response, _ := io.ReadAll(resp.Body)
+	fmt.Println(" Registry created: ", string(response))
+	return err, response
 }
 
 // retrieves list of registries in clearblade by systemKey, gcpRegistryRegion, and projectId.
@@ -199,24 +233,50 @@ func gcpListAllRegistries(ctx context.Context, gcpClient *gcpiotcore.DeviceManag
 			// TODO: Handle error.
 			fmt.Printf("Err:[%s].\n", err)
 		}
-		// TODO: continue the structure copy
-		//fmt.Printf("IOTCORE:", resp)
-		var eventNotificationConfigs []eventNotificationConfig
-		for _, currentEventNotificationConfig := range resp.EventNotificationConfigs {
-			eventNotificationConfig := eventNotificationConfig{}
-			eventNotificationConfig.PubsubTopicName = currentEventNotificationConfig.PubsubTopicName
-			eventNotificationConfig.SubfolderMatches = currentEventNotificationConfig.SubfolderMatches
-			eventNotificationConfigs = append(eventNotificationConfigs, eventNotificationConfig)
-		}
+		mqttConfig := extractMqttConfig(resp)
+		httpConfig := extracHttpConfig(resp)
+		stateNotificationConfig := extractStateNotificationConfig(resp)
 
-		iotRegistries = append(iotRegistries, cbRegistry{
+		currentCbRegistry := cbRegistry{
 			Id:                       resp.Id,
 			Name:                     resp.Name,
-			LogLevel:                 resp.LogLevel,
+			LogLevel:                 resp.LogLevel.String(),
 			Credentials:              "",
-			EventNotificationConfigs: eventNotificationConfigs,
-		})
+			EventNotificationConfigs: extractEventNotificationConfig(resp),
+			StateNotificationConfig:  &stateNotificationConfig,
+			MqttConfig:               &mqttConfig,
+			HttpConfig:               &httpConfig,
+		}
+		iotRegistries = append(iotRegistries, currentCbRegistry)
 	}
-	gcpClient.Close()
 	return iotRegistries
+}
+
+func extractStateNotificationConfig(resp *gcpiotpb.DeviceRegistry) stateNotificationConfig {
+	stateNotificationConfig := stateNotificationConfig{}
+	stateNotificationConfig.PubsubTopicName = resp.StateNotificationConfig.PubsubTopicName
+	return stateNotificationConfig
+}
+
+func extractMqttConfig(resp *gcpiotpb.DeviceRegistry) mqttEnabledState {
+	mqttConfig := mqttEnabledState{}
+	mqttConfig.MqttEnabledState = resp.MqttConfig.MqttEnabledState.String()
+	return mqttConfig
+}
+
+func extracHttpConfig(resp *gcpiotpb.DeviceRegistry) httpEnabledState {
+	httpConfig := httpEnabledState{}
+	httpConfig.HttpEnabledState = resp.HttpConfig.HttpEnabledState.String()
+	return httpConfig
+}
+
+func extractEventNotificationConfig(resp *gcpiotpb.DeviceRegistry) []eventNotificationConfig {
+	var eventNotificationConfigs []eventNotificationConfig
+	for _, currentEventNotificationConfig := range resp.EventNotificationConfigs {
+		eventNotificationConfig := eventNotificationConfig{}
+		eventNotificationConfig.PubsubTopicName = currentEventNotificationConfig.PubsubTopicName
+		eventNotificationConfig.SubfolderMatches = currentEventNotificationConfig.SubfolderMatches
+		eventNotificationConfigs = append(eventNotificationConfigs, eventNotificationConfig)
+	}
+	return eventNotificationConfigs
 }

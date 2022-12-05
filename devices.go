@@ -52,6 +52,18 @@ func fetchDevicesFromGoogleIotCore(ctx context.Context, gcpClient *gcpiotcore.De
 	return fetchAllDevices(ctx, gcpClient, parent)
 }
 
+func fetchDevicesFromGoogleIotCoreWithRegistry(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient, registry cbRegistry) ([]*gcpiotpb.Device, map[string]interface{}) {
+
+	val, _ := getAbsPath(Args.serviceAccountFile)
+	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion + "/registries/" + registry.Id
+
+	if Args.devicesCsvFile != "" {
+		return fetchDevicesFromCSV(ctx, gcpClient, parent)
+	}
+
+	return fetchAllDevices(ctx, gcpClient, parent)
+}
+
 func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerClient, parent string) ([]*gcpiotpb.Device, map[string]interface{}) {
 
 	absDevicesCsvFilePath, err := getAbsPath(Args.devicesCsvFile)
@@ -146,7 +158,8 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 		}
 	}
 
-	defer client.Close()
+	//TODO(close at the end)
+	//defer client.Close()
 	fmt.Println(string(colorGreen), "\u2713 Fetched", len(devices), "devices!", string(colorReset))
 	return devices, deviceConfigs
 }
