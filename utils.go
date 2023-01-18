@@ -7,10 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/k0kubun/go-ansi"
-	"github.com/schollz/progressbar/v3"
-	"golang.org/x/exp/maps"
-	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"io/ioutil"
 	"log"
 	"os"
@@ -19,6 +15,11 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/k0kubun/go-ansi"
+	"github.com/schollz/progressbar/v3"
+	"golang.org/x/exp/maps"
+	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 )
 
 var regions = map[string]string{
@@ -113,6 +114,8 @@ func getSpinner(description string) *progressbar.ProgressBar {
 }
 
 func getURI(region string) string {
+	// todo: remove this hardcoded value
+	return "https://dev.clearblade.com"
 	if Args.sandbox {
 		return "https://iot-sandbox.clearblade.com"
 	}
@@ -181,31 +184,11 @@ func transform(device *gcpiotpb.Device) *CbDevice {
 			LastAccessedGatewayId:   device.GatewayConfig.LastAccessedGatewayId,
 			LastAccessedGatewayTime: getTimeString(device.GatewayConfig.LastAccessedGatewayTime.AsTime()),
 		},
-		Credentials:        parsedCreds,
-		LastConfigAckTime:  getTimeString(device.LastConfigAckTime.AsTime()),
-		LastConfigSendTime: getTimeString(device.LastConfigSendTime.AsTime()),
-		LastErrorTime:      getTimeString(device.LastErrorTime.AsTime()),
-		LastEventTime:      getTimeString(device.LastEventTime.AsTime()),
-		LastHeartbeatTime:  getTimeString(device.LastHeartbeatTime.AsTime()),
-		LastStateTime:      getTimeString(device.LastStateTime.AsTime()),
-		LogLevel:           device.LogLevel.String(),
-		Metadata:           device.Metadata,
-		Name:               device.Id,
-		NumId:              fmt.Sprint(device.NumId),
-	}
-
-	if device.State != nil {
-		cbDevice.State = DeviceState{
-			UpdateTime: getTimeString(device.State.UpdateTime.AsTime()),
-			BinaryData: base64.StdEncoding.EncodeToString(device.State.BinaryData),
-		}
-	}
-
-	if device.LastErrorStatus != nil {
-		cbDevice.LastErrorStatus = DeviceLastErrorStatus{
-			Code:    device.LastErrorStatus.Code,
-			Message: device.LastErrorStatus.Message,
-		}
+		Credentials: parsedCreds,
+		LogLevel:    device.LogLevel.String(),
+		Metadata:    device.Metadata,
+		Name:        device.Id,
+		NumId:       fmt.Sprint(device.NumId),
 	}
 
 	return cbDevice
