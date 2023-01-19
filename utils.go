@@ -114,8 +114,6 @@ func getSpinner(description string) *progressbar.ProgressBar {
 }
 
 func getURI(region string) string {
-	// todo: remove this hardcoded value
-	return "https://dev.clearblade.com"
 	if Args.sandbox {
 		return "https://iot-sandbox.clearblade.com"
 	}
