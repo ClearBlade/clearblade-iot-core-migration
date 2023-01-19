@@ -17,8 +17,8 @@ type CbDevice struct {
 	LastEventTime      string                `json:"-"`
 	LastHeartbeatTime  string                `json:"-"`
 	LastStateTime      string                `json:"-"`
-	LogLevel           string                `json:"-"`
-	Metadata           map[string]string     `json:"-"`
+	LogLevel           string                `json:"logLevel,omitempty"`
+	Metadata           map[string]string     `json:"metadata,omitempty"`
 	Name               string                `json:"name"`
 	NumId              string                `json:"numId"`
 	State              DeviceState           `json:"-"`
