@@ -5,21 +5,23 @@ type Data struct {
 }
 
 type CbDevice struct {
-	Blocked            bool                 `json:"blocked"`
-	Config             DeviceConfig         `json:"config,omitempty"`
-	Credentials        []CbDeviceCredential `json:"credentials"`
-	GatewayConfig      GatewayConfig        `json:"gatewayConfig,omitempty"`
-	Id                 string               `json:"id"`
-	LastConfigAckTime  string               `json:"lastConfigAckTime,omitempty"`
-	LastConfigSendTime string               `json:"lastConfigSendTime,omitempty"`
-	LastErrorTime      string               `json:"lastErrorTime,omitempty"`
-	LastEventTime      string               `json:"lastEventTime,omitempty"`
-	LastHeartbeatTime  string               `json:"lastHeartbeatTime,omitempty"`
-	LastStateTime      string               `json:"lastStateTime,omitempty"`
-	LogLevel           string               `json:"logLevel,omitempty"`
-	Metadata           map[string]string    `json:"metadata,omitempty"`
-	Name               string               `json:"name"`
-	NumId              string               `json:"numId"`
+	Blocked            bool                  `json:"blocked"`
+	Config             DeviceConfig          `json:"config,omitempty"`
+	Credentials        []CbDeviceCredential  `json:"credentials"`
+	GatewayConfig      GatewayConfig         `json:"gatewayConfig,omitempty"`
+	Id                 string                `json:"id"`
+	LastConfigAckTime  string                `json:"-"`
+	LastConfigSendTime string                `json:"-"`
+	LastErrorStatus    DeviceLastErrorStatus `json:"-"`
+	LastErrorTime      string                `json:"-"`
+	LastEventTime      string                `json:"-"`
+	LastHeartbeatTime  string                `json:"-"`
+	LastStateTime      string                `json:"-"`
+	LogLevel           string                `json:"-"`
+	Metadata           map[string]string     `json:"-"`
+	Name               string                `json:"name"`
+	NumId              string                `json:"numId"`
+	State              DeviceState           `json:"-"`
 }
 
 type CbDeviceCredential struct {
