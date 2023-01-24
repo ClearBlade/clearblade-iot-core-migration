@@ -93,6 +93,8 @@ func main() {
 	// Authenticate GCP service user and Clearblade User account
 	ctx, gcpClient, err := authenticate()
 
+	defer gcpClient.Close()
+
 	if err != nil {
 		log.Fatalln(err)
 	}

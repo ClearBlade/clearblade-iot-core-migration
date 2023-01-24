@@ -95,7 +95,6 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 			maps.Copy(deviceConfigs, devicesSubsetConfigHistory)
 		}
 
-		defer client.Close()
 		return devices, deviceConfigs
 	}
 
@@ -107,7 +106,6 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 
 	devices, deviceConfigs = fetchDevices(req, ctx, client, len(deviceIds))
 
-	defer client.Close()
 	return devices, deviceConfigs
 }
 
@@ -146,7 +144,6 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 		}
 	}
 
-	defer client.Close()
 	fmt.Println(string(colorGreen), "\u2713 Fetched", len(devices), "devices!", string(colorReset))
 	return devices, deviceConfigs
 }
@@ -237,10 +234,14 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 		}
 
 		boundDevicesIterator := gcpIotClient.ListDevices(ctx, &gcpiotpb.ListDevicesRequest{
+			Parent: getGoogleRegistryPath(),
 			GatewayListOptions: &gcpiotpb.GatewayListOptions{
 				Filter: &gcpiotpb.GatewayListOptions_AssociationsGatewayId{
 					AssociationsGatewayId: gateway.Id,
 				},
+			},
+			FieldMask: &fieldmaskpb.FieldMask{
+				Paths: []string{"id", "name"},
 			},
 		})
 
@@ -255,13 +256,15 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 			}
 
 			deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
-			device, err := deviceService.Get(resp.Id).FieldMask("id").Do()
+
+			device, err := deviceService.Get(getDevicePath(Args.cbRegistryRegion, Args.cbRegistryName, resp.Id)).Do()
 			if err != nil {
 				log.Println(err)
 				log.Fatal("caught error when getting bound device")
 			}
 
 			registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
+
 			_, bindError := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
 				DeviceId:  device.Id,
 				GatewayId: gateway.Id,

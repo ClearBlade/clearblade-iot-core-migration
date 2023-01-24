@@ -68,10 +68,22 @@ func getProjectID(filePath string) string {
 	return payload.Project_id
 }
 
-func getCbRegistryPath() string {
+func getRegistryPath(region, registryId string) string {
 	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getProjectID(val), Args.cbRegistryRegion, Args.cbRegistryName)
+	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getProjectID(val), region, registryId)
 	return parent
+}
+
+func getDevicePath(region, registryId, deviceId string) string {
+	return fmt.Sprintf("%s/devices/%s", getRegistryPath(region, registryId), deviceId)
+}
+
+func getCbRegistryPath() string {
+	return getRegistryPath(Args.cbRegistryRegion, Args.cbRegistryName)
+}
+
+func getGoogleRegistryPath() string {
+	return getRegistryPath(Args.gcpRegistryRegion, Args.registryName)
 }
 
 func readInput(msg string) (string, error) {
