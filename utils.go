@@ -68,6 +68,12 @@ func getProjectID(filePath string) string {
 	return payload.Project_id
 }
 
+func getCbRegistryPath() string {
+	val, _ := getAbsPath(Args.serviceAccountFile)
+	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getProjectID(val), Args.cbRegistryRegion, Args.cbRegistryName)
+	return parent
+}
+
 func readInput(msg string) (string, error) {
 	fmt.Print(msg)
 	reader := bufio.NewReader(os.Stdin)

@@ -214,6 +214,67 @@ func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, cli
 	return configs
 }
 
+func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *gcpiotcore.DeviceManagerClient, ctx context.Context, devices []*gcpiotpb.Device) {
+	gateways := make([]*gcpiotpb.Device, 0)
+
+	for i := 0; i < len(devices); i++ {
+		if devices[i].GatewayConfig.GatewayType == *gcpiotpb.GatewayType_GATEWAY.Enum() {
+			gateways = append(gateways, devices[i])
+		}
+	}
+
+	if len(gateways) == 0 {
+		return
+	}
+
+	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
+
+	parent := getCbRegistryPath()
+
+	for _, gateway := range gateways {
+		if barErr := bar.Add(1); barErr != nil {
+			log.Fatalln("Unable to add to progressbar: ", barErr)
+		}
+
+		boundDevicesIterator := gcpIotClient.ListDevices(ctx, &gcpiotpb.ListDevicesRequest{
+			GatewayListOptions: &gcpiotpb.GatewayListOptions{
+				Filter: &gcpiotpb.GatewayListOptions_AssociationsGatewayId{
+					AssociationsGatewayId: gateway.Id,
+				},
+			},
+		})
+
+		for {
+			resp, err := boundDevicesIterator.Next()
+			if err == iterator.Done {
+				break
+			}
+
+			if err != nil {
+				log.Fatalln("Unable to iterate over bound device records: ", err)
+			}
+
+			deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+			device, err := deviceService.Get(resp.Id).FieldMask("id").Do()
+			if err != nil {
+				log.Println(err)
+				log.Fatal("caught error when getting bound device")
+			}
+
+			registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
+			_, bindError := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
+				DeviceId:  device.Id,
+				GatewayId: gateway.Id,
+			}).Do()
+
+			if bindError != nil {
+				log.Println(bindError)
+				log.Fatal("Failed to bind device to gateway")
+			}
+		}
+	}
+}
+
 func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}) {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
 	i := 0
@@ -275,7 +336,8 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 
 func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 
-	_, err := deviceService.Create("theParent", transform(device)).Do()
+	call := deviceService.Create(getCbRegistryPath(), transform(device))
+	_, err := call.Do()
 	return err
 
 }

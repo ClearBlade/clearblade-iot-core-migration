@@ -2,6 +2,8 @@ module clearblade-iot-core-migration
 
 go 1.18
 
+replace github.com/clearblade/go-iot => /Users/clarkbynum/Developer/go/src/github.com/clearblade/go-iot
+
 require (
 	cloud.google.com/go/iot v1.4.0
 	github.com/k0kubun/go-ansi v0.0.0-20180517002512-3bf9e2903213

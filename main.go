@@ -104,9 +104,14 @@ func main() {
 
 	cbCtx := context.Background()
 	service, err := cbiotcore.NewService(cbCtx)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Add fetched devices to ClearBlade Device table
 	addDevicesToClearBlade(service, devices, deviceConfigs)
+
+	migrateBoundDevicesToClearBlade(service, gcpClient, ctx, devices)
 
 	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
 
