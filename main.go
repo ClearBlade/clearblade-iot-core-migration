@@ -1,7 +1,6 @@
 package main
 
 import (
-	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	"context"
 	"errors"
 	"flag"
@@ -9,6 +8,9 @@ import (
 	"log"
 	"os"
 	"runtime"
+
+	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	cbiotcore "github.com/clearblade/go-iot"
 )
 
 var (
@@ -25,9 +27,7 @@ var (
 
 type DeviceMigratorArgs struct {
 	// ClearBlade specific flags
-	platformURL      string
-	token            string
-	systemKey        string
+	cbRegistryName   string
 	cbRegistryRegion string
 
 	// GCP IoT Core specific flags
@@ -43,9 +43,8 @@ type DeviceMigratorArgs struct {
 }
 
 func initMigrationFlags() {
-	flag.StringVar(&Args.token, "cbToken", "", "ClearBlade User Token (Required)")
-	flag.StringVar(&Args.systemKey, "cbSystemKey", "", "ClearBlade System Key (Required)")
-	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Registry Region (Optional)")
+	flag.StringVar(&Args.cbRegistryName, "cbRegistryName", "", "ClearBlade Registry Name (Required)")
+	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Registry Region (Required)")
 
 	flag.StringVar(&Args.serviceAccountFile, "gcpServiceAccount", "", "Service account file path (Required)")
 	flag.StringVar(&Args.registryName, "gcpRegistryName", "", "Google Registry Name (Required)")
@@ -103,28 +102,23 @@ func main() {
 
 	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
 
+	cbCtx := context.Background()
+	service, err := cbiotcore.NewService(cbCtx)
+
 	// Add fetched devices to ClearBlade Device table
-	addDevicesToClearBlade(devices, deviceConfigs)
+	addDevicesToClearBlade(service, devices, deviceConfigs)
 
 	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
 
 }
 
 func validateCBFlags() {
-	if Args.systemKey == "" {
-		value, err := readInput("Enter ClearBlade Platform System Key: ")
+	if Args.cbRegistryName == "" {
+		value, err := readInput("Enter ClearBlade Registry Name: ")
 		if err != nil {
-			log.Fatalln("Error reading system key: ", err)
+			log.Fatalln("Error reading registry name: ", err)
 		}
-		Args.systemKey = value
-	}
-
-	if Args.token == "" {
-		value, err := readInput("Enter ClearBlade User Token: ")
-		if err != nil {
-			log.Fatalln("Error reading user token: ", err)
-		}
-		Args.token = value
+		Args.cbRegistryName = value
 	}
 
 	if Args.cbRegistryRegion == "" {
@@ -133,13 +127,8 @@ func validateCBFlags() {
 			log.Fatalln("Error reading registry region: ", err)
 		}
 
-		if value == "" {
-			Args.platformURL = getURI(Args.gcpRegistryRegion)
-		} else {
-			Args.platformURL = getURI(value)
-		}
-	} else {
-		Args.platformURL = getURI(Args.cbRegistryRegion)
+		Args.cbRegistryRegion = value
+
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	cbiotcore "github.com/clearblade/go-iot"
 	"github.com/k0kubun/go-ansi"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/exp/maps"
@@ -152,14 +153,14 @@ func getAbsPath(path string) (string, error) {
 	return filepath.Join(dir, path[1:]), nil
 }
 
-func transform(device *gcpiotpb.Device) *CbDevice {
+func transform(device *gcpiotpb.Device) *cbiotcore.Device {
 
-	parsedCreds := make([]CbDeviceCredential, 0)
+	parsedCreds := make([]*cbiotcore.DeviceCredential, 0)
 	if Args.updatePublicKeys {
 		for _, creds := range device.Credentials {
-			parsedCreds = append(parsedCreds, CbDeviceCredential{
+			parsedCreds = append(parsedCreds, &cbiotcore.DeviceCredential{
 				ExpirationTime: getTimeString(creds.GetExpirationTime().AsTime()),
-				PublicKey: IoTCorePublicKeyCredential{
+				PublicKey: &cbiotcore.PublicKeyCredential{
 					Format: creds.GetPublicKey().Format.String(),
 					Key:    creds.GetPublicKey().Key,
 				},
@@ -167,16 +168,16 @@ func transform(device *gcpiotpb.Device) *CbDevice {
 		}
 	}
 
-	cbDevice := &CbDevice{
+	cbDevice := &cbiotcore.Device{
 		Id:      device.Id,
 		Blocked: device.Blocked,
-		Config: DeviceConfig{
-			Version:         fmt.Sprint(device.Config.Version),
+		Config: &cbiotcore.DeviceConfig{
+			Version:         device.Config.Version,
 			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
 			DeviceAckTime:   getTimeString(device.Config.DeviceAckTime.AsTime()),
 			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
 		},
-		GatewayConfig: GatewayConfig{
+		GatewayConfig: &cbiotcore.GatewayConfig{
 			GatewayType:             device.GatewayConfig.GatewayType.String(),
 			GatewayAuthMethod:       device.GatewayConfig.GatewayAuthMethod.String(),
 			LastAccessedGatewayId:   device.GatewayConfig.LastAccessedGatewayId,
@@ -186,7 +187,7 @@ func transform(device *gcpiotpb.Device) *CbDevice {
 		LogLevel:    device.LogLevel.String(),
 		Metadata:    device.Metadata,
 		Name:        device.Id,
-		NumId:       fmt.Sprint(device.NumId),
+		NumId:       device.NumId,
 	}
 
 	return cbDevice

@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	cbiotcore "github.com/clearblade/go-iot"
 	"golang.org/x/exp/maps"
 	"google.golang.org/api/iterator"
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
@@ -213,19 +214,21 @@ func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, cli
 	return configs
 }
 
-func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}) {
+func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}) {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
 	i := 0
 	fileContents := ""
+
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
 	for _, device := range devices {
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
 
-		err := createDevice(device)
+		err := createDevice(deviceService, device)
 		if err != nil {
-			err := updateDevice(device)
+			err := updateDevice(deviceService, device)
 			if err != nil {
 				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
 				fileContents += fmt.Sprint(device.Id, "\n")
@@ -236,7 +239,7 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 	}
 
 	if len(deviceConfigs) != 0 {
-		err := updateConfigHistory(deviceConfigs)
+		err := updateConfigHistory(service, deviceConfigs)
 		if err != nil {
 			fmt.Println(string(colorRed), "\n\n\u2715 Unable to update config version history! Reason: ", err, string(colorReset))
 		}
@@ -255,103 +258,39 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 	}
 }
 
-func updateDevice(device *gcpiotpb.Device) error {
+func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 
-	transformedDevice := transform(device)
-	postBody, _ := json.Marshal(transformedDevice)
-	responseBody := bytes.NewBuffer(postBody)
+	patchCall := deviceService.Patch(device.Name, transform(device))
 
-	url := Args.platformURL + "/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot_devices"
-	req, err := http.NewRequest("PATCH", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", Args.token)
-	if err != nil {
-		return err
-	}
-
-	q := req.URL.Query()
-	q.Add("name", device.Id)
 	if Args.updatePublicKeys {
-		q.Add("updateMask", "credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
+		patchCall.UpdateMask("credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
 	} else {
-		q.Add("updateMask", "blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
-	}
-	req.URL.RawQuery = q.Encode()
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
+		patchCall.UpdateMask("blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
 	}
 
-	jsonStr := string(body)
-	var jsonMap map[string]interface{}
+	_, err := patchCall.Do()
+	return err
 
-	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
-		// log.Fatalln("Unable to unmarshall JSON: ", err)
-		return errors.New(jsonStr)
-	}
-
-	if jsonMap["error"] != nil {
-		return errors.New(jsonStr)
-	}
-
-	return nil
 }
 
-func createDevice(device *gcpiotpb.Device) error {
-	transformedDevice := transform(device)
-	postBody, _ := json.Marshal(transformedDevice)
-	responseBody := bytes.NewBuffer(postBody)
-	url := Args.platformURL + "/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot_devices"
-	req, err := http.NewRequest("POST", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", Args.token)
-	if err != nil {
-		return err
-	}
+func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	_, err := deviceService.Create("theParent", transform(device)).Do()
+	return err
 
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	jsonStr := string(body)
-	var jsonMap map[string]interface{}
-
-	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
-		// log.Fatalln("Unable to unmarshall JSON: ", err)
-		return errors.New(jsonStr)
-	}
-
-	if jsonMap["error"] != nil {
-		return errors.New(jsonStr)
-	}
-
-	return nil
 }
 
-func updateConfigHistory(deviceConfigs map[string]interface{}) error {
+func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
+
+	creds := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
+
 	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}
 	postBody, _ := json.Marshal(transformedDeviceConfigHistory)
 	responseBody := bytes.NewBuffer(postBody)
 
-	url := Args.platformURL + "/api/v/1/code/" + Args.systemKey + "/devicesConfigHistoryUpdate"
+	url := creds.Url + "/api/v/1/code/" + creds.SystemKey + "/devicesConfigHistoryUpdate"
 	req, err := http.NewRequest("POST", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", Args.token)
+	req.Header.Set("ClearBlade-UserToken", creds.Token)
 	if err != nil {
 		return err
 	}
