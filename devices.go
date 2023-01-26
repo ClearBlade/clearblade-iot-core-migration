@@ -2,20 +2,21 @@ package main
 
 import (
 	"bytes"
-	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
-	"google.golang.org/api/iterator"
-	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
-	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
+
+	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	"golang.org/x/exp/maps"
+	"google.golang.org/api/iterator"
+	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 var fields = &fieldmaskpb.FieldMask{
@@ -255,10 +256,8 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 }
 
 func updateDevice(device *gcpiotpb.Device) error {
-	transformedDevice := map[string]interface{}{
-		"device": transform(device),
-	}
 
+	transformedDevice := transform(device)
 	postBody, _ := json.Marshal(transformedDevice)
 	responseBody := bytes.NewBuffer(postBody)
 
