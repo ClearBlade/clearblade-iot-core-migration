@@ -27,6 +27,7 @@ var (
 
 type DeviceMigratorArgs struct {
 	// ClearBlade specific flags
+	cbServiceAccount string
 	cbRegistryName   string
 	cbRegistryRegion string
 
@@ -38,11 +39,11 @@ type DeviceMigratorArgs struct {
 	// Optional flags
 	devicesCsvFile   string
 	configHistory    bool
-	sandbox          bool
 	updatePublicKeys bool
 }
 
 func initMigrationFlags() {
+	flag.StringVar(&Args.cbServiceAccount, "cbServiceAccount", "", "Path to a ClearBlade service account file. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
 	flag.StringVar(&Args.cbRegistryName, "cbRegistryName", "", "ClearBlade Registry Name (Required)")
 	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Registry Region (Required)")
 
@@ -53,7 +54,6 @@ func initMigrationFlags() {
 	// Optional
 	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path")
 	flag.BoolVar(&Args.configHistory, "configHistory", false, "Store Config History. Default is false")
-	flag.BoolVar(&Args.sandbox, "sandbox", false, "Connect to IoT Core sandbox system. Default is false")
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
 }
 
@@ -86,7 +86,7 @@ func main() {
 	validateGCPIoTCoreFlags()
 
 	// Validate if all required CB flags are provided
-	validateCBFlags()
+	validateCBFlags(Args.gcpRegistryRegion)
 
 	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
 
@@ -127,7 +127,26 @@ func main() {
 
 }
 
-func validateCBFlags() {
+func validateCBFlags(gcpRegistryRegion string) {
+
+	if Args.cbServiceAccount == "" {
+		value, err := readInput("Enter path to ClearBlade service account file. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project for more info: ")
+		if err != nil {
+			log.Fatalln("Error reading service account: ", err)
+		}
+		Args.cbServiceAccount = value
+	}
+
+	// validate that path to service account file exists
+	if _, err := os.Stat(Args.cbServiceAccount); errors.Is(err, os.ErrNotExist) {
+		log.Fatalf("Could not location service account file %s. Please make sure the path is correct\n", Args.cbServiceAccount)
+	}
+
+	err := os.Setenv("CLEARBLADE_CONFIGURATION", Args.cbServiceAccount)
+	if err != nil {
+		log.Fatalln("Failed to set CLEARBLADE_CONFIGURATION env variable", err.Error())
+	}
+
 	if Args.cbRegistryName == "" {
 		value, err := readInput("Enter ClearBlade Registry Name: ")
 		if err != nil {
@@ -142,9 +161,14 @@ func validateCBFlags() {
 			log.Fatalln("Error reading registry region: ", err)
 		}
 
-		Args.cbRegistryRegion = value
+		if value == "" {
+			Args.cbRegistryRegion = gcpRegistryRegion
+		} else {
+			Args.cbRegistryRegion = value
+		}
 
 	}
+
 }
 
 func validateGCPIoTCoreFlags() {

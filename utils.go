@@ -133,9 +133,6 @@ func getSpinner(description string) *progressbar.ProgressBar {
 }
 
 func getURI(region string) string {
-	if Args.sandbox {
-		return "https://iot-sandbox.clearblade.com"
-	}
 
 	if !isValidRegion(region) {
 		log.Fatalln("Provided region '", region, "' is not supported. Supported regions are: ", maps.Keys(regions))
