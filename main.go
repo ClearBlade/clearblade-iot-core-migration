@@ -110,10 +110,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Add fetched devices to ClearBlade Device table
-	addDevicesToClearBlade(service, devices, deviceConfigs)
+	errorLogs := make([]ErrorLog, 0)
 
-	migrateBoundDevicesToClearBlade(service, gcpClient, ctx, devices)
+	// Add fetched devices to ClearBlade Device table
+	addDevicesToClearBlade(service, devices, deviceConfigs, errorLogs)
+
+	migrateBoundDevicesToClearBlade(service, gcpClient, ctx, devices, errorLogs)
+
+	if len(errorLogs) > 0 {
+		if err := generateFailedDevicesCSV(errorLogs); err != nil {
+			log.Fatalln(err)
+		}
+	}
 
 	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
 

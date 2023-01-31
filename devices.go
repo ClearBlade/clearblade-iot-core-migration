@@ -211,8 +211,10 @@ func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, cli
 	return configs
 }
 
-func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *gcpiotcore.DeviceManagerClient, ctx context.Context, devices []*gcpiotpb.Device) {
+func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *gcpiotcore.DeviceManagerClient, ctx context.Context, devices []*gcpiotpb.Device, errorLogs []ErrorLog) {
 	gateways := make([]*gcpiotpb.Device, 0)
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
 	for i := 0; i < len(devices); i++ {
 		if devices[i].GatewayConfig.GatewayType == *gcpiotpb.GatewayType_GATEWAY.Enum() {
@@ -240,9 +242,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 					AssociationsGatewayId: gateway.Id,
 				},
 			},
-			FieldMask: &fieldmaskpb.FieldMask{
-				Paths: []string{"id", "name"},
-			},
+			FieldMask: fields,
 		})
 
 		for {
@@ -252,36 +252,69 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 			}
 
 			if err != nil {
-				log.Fatalln("Unable to iterate over bound device records: ", err)
+				errorLogs = append(errorLogs, ErrorLog{
+					Context: "Bound Devices Iterator",
+					Error:   err,
+				})
+				break
 			}
 
-			deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
-
-			device, err := deviceService.Get(getDevicePath(Args.cbRegistryRegion, Args.cbRegistryName, resp.Id)).Do()
+			getDeviceResp, err := deviceService.Get(getDevicePath(Args.cbRegistryRegion, Args.cbRegistryName, resp.Id)).Do()
 			if err != nil {
-				log.Println(err)
-				log.Fatal("caught error when getting bound device")
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Get Bound Device",
+					Error:    err,
+					DeviceId: resp.Id,
+				})
+				continue
+			}
+			if getDeviceResp.ServerResponse.HTTPStatusCode == http.StatusNotFound {
+				_, createErr := deviceService.Create(parent, transform(resp)).Do()
+				if createErr != nil {
+					errorLogs = append(errorLogs, ErrorLog{
+						Context:  "Create bound device",
+						Error:    createErr,
+						DeviceId: resp.Id,
+					})
+					continue
+				}
+			} else if getDeviceResp.ServerResponse.HTTPStatusCode != http.StatusOK {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Get Bound Device non-200 status",
+					DeviceId: resp.Id,
+				})
+				continue
 			}
 
-			registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
-
-			_, bindError := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
-				DeviceId:  device.Id,
+			bindDeviceResp, err := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
+				DeviceId:  resp.Id,
 				GatewayId: gateway.Id,
 			}).Do()
 
-			if bindError != nil {
-				log.Println(bindError)
-				log.Fatal("Failed to bind device to gateway")
+			if err != nil {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Bind device to gateway",
+					Error:    err,
+					DeviceId: resp.Id,
+				})
+				continue
+			}
+
+			if bindDeviceResp.ServerResponse.HTTPStatusCode != http.StatusOK {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Bind device to gateway non-200 status",
+					Error:    err,
+					DeviceId: getDeviceResp.Id,
+				})
+				continue
 			}
 		}
 	}
 }
 
-func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}) {
+func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
 	i := 0
-	fileContents := ""
 
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
@@ -295,7 +328,11 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 			err := updateDevice(deviceService, device)
 			if err != nil {
 				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
-				fileContents += fmt.Sprint(device.Id, "\n")
+				errorLogs = append(errorLogs, ErrorLog{
+					DeviceId: device.Id,
+					Context:  "Create/Update Device",
+					Error:    err,
+				})
 				continue
 			}
 		}
@@ -313,12 +350,6 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", i, "/", len(devices), "devices!", string(colorReset))
 	} else {
 		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", i, "/", len(devices), "devices!", string(colorReset))
-	}
-
-	if fileContents != "" {
-		if err := generateFailedDevicesCSV(fileContents); err != nil {
-			log.Fatalln(err)
-		}
 	}
 }
 

@@ -187,25 +187,31 @@ func transform(device *gcpiotpb.Device) *cbiotcore.Device {
 	}
 
 	cbDevice := &cbiotcore.Device{
-		Id:      device.Id,
-		Blocked: device.Blocked,
-		Config: &cbiotcore.DeviceConfig{
-			Version:         device.Config.Version,
-			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
-			DeviceAckTime:   getTimeString(device.Config.DeviceAckTime.AsTime()),
-			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
-		},
-		GatewayConfig: &cbiotcore.GatewayConfig{
-			GatewayType:             device.GatewayConfig.GatewayType.String(),
-			GatewayAuthMethod:       device.GatewayConfig.GatewayAuthMethod.String(),
-			LastAccessedGatewayId:   device.GatewayConfig.LastAccessedGatewayId,
-			LastAccessedGatewayTime: getTimeString(device.GatewayConfig.LastAccessedGatewayTime.AsTime()),
-		},
+		Id:          device.Id,
+		Blocked:     device.Blocked,
 		Credentials: parsedCreds,
 		LogLevel:    device.LogLevel.String(),
 		Metadata:    device.Metadata,
 		Name:        device.Id,
 		NumId:       device.NumId,
+	}
+
+	if device.Config != nil {
+		cbDevice.Config = &cbiotcore.DeviceConfig{
+			Version:         device.Config.Version,
+			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
+			DeviceAckTime:   getTimeString(device.Config.DeviceAckTime.AsTime()),
+			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
+		}
+	}
+
+	if device.GatewayConfig != nil {
+		cbDevice.GatewayConfig = &cbiotcore.GatewayConfig{
+			GatewayType:             device.GatewayConfig.GatewayType.String(),
+			GatewayAuthMethod:       device.GatewayConfig.GatewayAuthMethod.String(),
+			LastAccessedGatewayId:   device.GatewayConfig.LastAccessedGatewayId,
+			LastAccessedGatewayTime: getTimeString(device.GatewayConfig.LastAccessedGatewayTime.AsTime()),
+		}
 	}
 
 	return cbDevice
@@ -218,7 +224,7 @@ func getTimeString(timestamp time.Time) string {
 	return timestamp.Format(time.RFC3339)
 }
 
-func generateFailedDevicesCSV(fileContents string) error {
+func generateFailedDevicesCSV(errorLogs []ErrorLog) error {
 	currDir, err := os.Getwd()
 	if err != nil {
 		return err
@@ -236,6 +242,15 @@ func generateFailedDevicesCSV(fileContents string) error {
 	}
 
 	defer f.Close()
+
+	fileContents := "context,error,deviceId\n"
+	for i := 0; i < len(errorLogs); i++ {
+		errMsg := ""
+		if errorLogs[i].Error != nil {
+			errMsg = errorLogs[i].Error.Error()
+		}
+		fileContents += fmt.Sprintf(`%s,"%s",%s\n`, errorLogs[i].Context, errMsg, errorLogs[i].DeviceId)
+	}
 
 	if _, err := f.WriteString(fileContents); err != nil {
 		return err
