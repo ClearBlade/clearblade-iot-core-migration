@@ -13,6 +13,7 @@ import (
 	"net/http"
 
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	cbiotcore "github.com/clearblade/go-iot"
 	"golang.org/x/exp/maps"
 	"google.golang.org/api/iterator"
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
@@ -94,7 +95,6 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 			maps.Copy(deviceConfigs, devicesSubsetConfigHistory)
 		}
 
-		defer client.Close()
 		return devices, deviceConfigs
 	}
 
@@ -106,7 +106,6 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 
 	devices, deviceConfigs = fetchDevices(req, ctx, client, len(deviceIds))
 
-	defer client.Close()
 	return devices, deviceConfigs
 }
 
@@ -145,7 +144,6 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 		}
 	}
 
-	defer client.Close()
 	fmt.Println(string(colorGreen), "\u2713 Fetched", len(devices), "devices!", string(colorReset))
 	return devices, deviceConfigs
 }
@@ -213,22 +211,128 @@ func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, cli
 	return configs
 }
 
-func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}) {
+func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *gcpiotcore.DeviceManagerClient, ctx context.Context, devices []*gcpiotpb.Device, errorLogs []ErrorLog) {
+	gateways := make([]*gcpiotpb.Device, 0)
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
+
+	for i := 0; i < len(devices); i++ {
+		if devices[i].GatewayConfig.GatewayType == *gcpiotpb.GatewayType_GATEWAY.Enum() {
+			gateways = append(gateways, devices[i])
+		}
+	}
+
+	if len(gateways) == 0 {
+		return
+	}
+
+	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
+
+	parent := getCbRegistryPath()
+
+	for _, gateway := range gateways {
+		if barErr := bar.Add(1); barErr != nil {
+			log.Fatalln("Unable to add to progressbar: ", barErr)
+		}
+
+		boundDevicesIterator := gcpIotClient.ListDevices(ctx, &gcpiotpb.ListDevicesRequest{
+			Parent: getGoogleRegistryPath(),
+			GatewayListOptions: &gcpiotpb.GatewayListOptions{
+				Filter: &gcpiotpb.GatewayListOptions_AssociationsGatewayId{
+					AssociationsGatewayId: gateway.Id,
+				},
+			},
+			FieldMask: fields,
+		})
+
+		for {
+			resp, err := boundDevicesIterator.Next()
+			if err == iterator.Done {
+				break
+			}
+
+			if err != nil {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context: "Bound Devices Iterator",
+					Error:   err,
+				})
+				break
+			}
+
+			getDeviceResp, err := deviceService.Get(getDevicePath(Args.cbRegistryRegion, Args.cbRegistryName, resp.Id)).Do()
+			if err != nil {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Get Bound Device",
+					Error:    err,
+					DeviceId: resp.Id,
+				})
+				continue
+			}
+			if getDeviceResp.ServerResponse.HTTPStatusCode == http.StatusNotFound {
+				_, createErr := deviceService.Create(parent, transform(resp)).Do()
+				if createErr != nil {
+					errorLogs = append(errorLogs, ErrorLog{
+						Context:  "Create bound device",
+						Error:    createErr,
+						DeviceId: resp.Id,
+					})
+					continue
+				}
+			} else if getDeviceResp.ServerResponse.HTTPStatusCode != http.StatusOK {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Get Bound Device non-200 status",
+					DeviceId: resp.Id,
+				})
+				continue
+			}
+
+			bindDeviceResp, err := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
+				DeviceId:  resp.Id,
+				GatewayId: gateway.Id,
+			}).Do()
+
+			if err != nil {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Bind device to gateway",
+					Error:    err,
+					DeviceId: resp.Id,
+				})
+				continue
+			}
+
+			if bindDeviceResp.ServerResponse.HTTPStatusCode != http.StatusOK {
+				errorLogs = append(errorLogs, ErrorLog{
+					Context:  "Bind device to gateway non-200 status",
+					Error:    err,
+					DeviceId: getDeviceResp.Id,
+				})
+				continue
+			}
+		}
+	}
+}
+
+func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
 	i := 0
-	fileContents := ""
+
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
 	for _, device := range devices {
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
 
-		err := createDevice(device)
+		err := createDevice(deviceService, device)
 		if err != nil {
-			err := updateDevice(device)
+			err := updateDevice(deviceService, device)
 			if err != nil {
 				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
-				fileContents += fmt.Sprint(device.Id, "\n")
+				errorLogs = append(errorLogs, ErrorLog{
+					DeviceId: device.Id,
+					Context:  "Create/Update Device",
+					Error:    err,
+				})
 				continue
 			}
 		}
@@ -236,7 +340,7 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 	}
 
 	if len(deviceConfigs) != 0 {
-		err := updateConfigHistory(deviceConfigs)
+		err := updateConfigHistory(service, deviceConfigs)
 		if err != nil {
 			fmt.Println(string(colorRed), "\n\n\u2715 Unable to update config version history! Reason: ", err, string(colorReset))
 		}
@@ -247,111 +351,42 @@ func addDevicesToClearBlade(devices []*gcpiotpb.Device, deviceConfigs map[string
 	} else {
 		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", i, "/", len(devices), "devices!", string(colorReset))
 	}
-
-	if fileContents != "" {
-		if err := generateFailedDevicesCSV(fileContents); err != nil {
-			log.Fatalln(err)
-		}
-	}
 }
 
-func updateDevice(device *gcpiotpb.Device) error {
+func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 
-	transformedDevice := transform(device)
-	postBody, _ := json.Marshal(transformedDevice)
-	responseBody := bytes.NewBuffer(postBody)
+	patchCall := deviceService.Patch(device.Name, transform(device))
 
-	url := Args.platformURL + "/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot_devices"
-	req, err := http.NewRequest("PATCH", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", Args.token)
-	if err != nil {
-		return err
-	}
-
-	q := req.URL.Query()
-	q.Add("name", device.Id)
 	if Args.updatePublicKeys {
-		q.Add("updateMask", "credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
+		patchCall.UpdateMask("credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
 	} else {
-		q.Add("updateMask", "blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
-	}
-	req.URL.RawQuery = q.Encode()
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
+		patchCall.UpdateMask("blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
 	}
 
-	jsonStr := string(body)
-	var jsonMap map[string]interface{}
+	_, err := patchCall.Do()
+	return err
 
-	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
-		// log.Fatalln("Unable to unmarshall JSON: ", err)
-		return errors.New(jsonStr)
-	}
-
-	if jsonMap["error"] != nil {
-		return errors.New(jsonStr)
-	}
-
-	return nil
 }
 
-func createDevice(device *gcpiotpb.Device) error {
-	transformedDevice := transform(device)
-	postBody, _ := json.Marshal(transformedDevice)
-	responseBody := bytes.NewBuffer(postBody)
-	url := Args.platformURL + "/api/v/4/webhook/execute/" + Args.systemKey + "/cloudiot_devices"
-	req, err := http.NewRequest("POST", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", Args.token)
-	if err != nil {
-		return err
-	}
+func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	call := deviceService.Create(getCbRegistryPath(), transform(device))
+	_, err := call.Do()
+	return err
 
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	jsonStr := string(body)
-	var jsonMap map[string]interface{}
-
-	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
-		// log.Fatalln("Unable to unmarshall JSON: ", err)
-		return errors.New(jsonStr)
-	}
-
-	if jsonMap["error"] != nil {
-		return errors.New(jsonStr)
-	}
-
-	return nil
 }
 
-func updateConfigHistory(deviceConfigs map[string]interface{}) error {
+func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
+
+	creds := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
+
 	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}
 	postBody, _ := json.Marshal(transformedDeviceConfigHistory)
 	responseBody := bytes.NewBuffer(postBody)
 
-	url := Args.platformURL + "/api/v/1/code/" + Args.systemKey + "/devicesConfigHistoryUpdate"
+	url := creds.Url + "/api/v/1/code/" + creds.SystemKey + "/devicesConfigHistoryUpdate"
 	req, err := http.NewRequest("POST", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", Args.token)
+	req.Header.Set("ClearBlade-UserToken", creds.Token)
 	if err != nil {
 		return err
 	}
