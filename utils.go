@@ -19,15 +19,8 @@ import (
 	cbiotcore "github.com/clearblade/go-iot"
 	"github.com/k0kubun/go-ansi"
 	"github.com/schollz/progressbar/v3"
-	"golang.org/x/exp/maps"
 	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 )
-
-var regions = map[string]string{
-	"us-central1":  "us-central1",
-	"asia-east1":   "asia-east1",
-	"europe-west1": "europe-west1",
-}
 
 func fileExists(filename string) bool {
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
@@ -130,23 +123,6 @@ func getSpinner(description string) *progressbar.ProgressBar {
 		progressbar.OptionShowCount(),
 	)
 	return bar
-}
-
-func getURI(region string) string {
-
-	if !isValidRegion(region) {
-		log.Fatalln("Provided region '", region, "' is not supported. Supported regions are: ", maps.Keys(regions))
-	}
-
-	return "https://" + region + ".clearblade.com"
-}
-
-func isValidRegion(region string) bool {
-	if _, ok := regions[region]; !ok {
-		return false
-	}
-
-	return true
 }
 
 func getAbsPath(path string) (string, error) {
