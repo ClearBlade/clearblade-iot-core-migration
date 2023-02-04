@@ -43,6 +43,10 @@ You will be prompted to enter a devices CSV file path that would be used to migr
 
 **Running this tool in a GCloud instance in the same region as your registry will speed up the migration process.**
 
+**When migrating GATEWAYS the tool ensures that bound DEVICES exist, creates those DEVICES if they don't exist and binds them to the GATEWAYS.**
+
+**Rerunning the tool against previously migrated DEVICES and GATEWAYS will UPDATE them, if needed, and skip them if not. This includes updating GATEWAY to DEVICE associations (bindings).**
+
 ### Migration Tool compilation
 
 The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install). In order to compile the tool for execution, the following steps need to be performed:
