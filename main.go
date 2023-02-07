@@ -40,6 +40,7 @@ type DeviceMigratorArgs struct {
 	devicesCsvFile   string
 	configHistory    bool
 	updatePublicKeys bool
+	skipConfig       bool
 }
 
 func initMigrationFlags() {
@@ -55,6 +56,7 @@ func initMigrationFlags() {
 	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path")
 	flag.BoolVar(&Args.configHistory, "configHistory", false, "Store Config History. Default is false")
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
+	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 }
 
 func main() {
@@ -123,7 +125,7 @@ func main() {
 		}
 	}
 
-	fmt.Println(string(colorGreen), "\n\u2713 Done!", string(colorReset))
+	fmt.Println(string(colorGreen), "\n\n\u2713 Done!", string(colorReset))
 
 }
 

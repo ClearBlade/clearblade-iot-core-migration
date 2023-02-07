@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math"
 	"net/http"
 
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
 	"golang.org/x/exp/maps"
 	"google.golang.org/api/iterator"
-	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -226,7 +226,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 		return
 	}
 
-	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
+	bar := getProgressBar(len(gateways), "\nMigrating bound devices for gateways...")
 
 	parent := getCbRegistryPath()
 
@@ -364,6 +364,17 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	}
 
 	_, err := patchCall.Do()
+
+	if !Args.skipConfig {
+		config := &cbiotcore.ModifyCloudToDeviceConfigRequest{
+			VersionToUpdate: 0,
+			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
+		}
+		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(device.Name, config)
+		_, err := updateConfigCall.Do()
+		return err
+	}
+
 	return err
 
 }
@@ -399,7 +410,7 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]in
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}

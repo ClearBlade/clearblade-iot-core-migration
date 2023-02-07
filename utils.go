@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -16,10 +15,10 @@ import (
 	"strings"
 	"time"
 
+	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
 	"github.com/k0kubun/go-ansi"
 	"github.com/schollz/progressbar/v3"
-	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 )
 
 func fileExists(filename string) bool {
@@ -47,7 +46,7 @@ func readCsvFile(filePath string) [][]string {
 }
 
 func getProjectID(filePath string) string {
-	content, err := ioutil.ReadFile(filePath)
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatalln("Error when opening json file: ", err)
 	}
@@ -169,7 +168,7 @@ func transform(device *gcpiotpb.Device) *cbiotcore.Device {
 		NumId:       device.NumId,
 	}
 
-	if device.Config != nil {
+	if device.Config != nil && !Args.skipConfig {
 		cbDevice.Config = &cbiotcore.DeviceConfig{
 			Version:         device.Config.Version,
 			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
