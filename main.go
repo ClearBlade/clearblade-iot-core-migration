@@ -115,7 +115,7 @@ func main() {
 	errorLogs := make([]ErrorLog, 0)
 
 	// Add fetched devices to ClearBlade Device table
-	addDevicesToClearBlade(service, devices, deviceConfigs, errorLogs)
+	errorLogs = addDevicesToClearBlade(service, devices, deviceConfigs, errorLogs)
 
 	migrateBoundDevicesToClearBlade(service, gcpClient, ctx, devices, errorLogs)
 
