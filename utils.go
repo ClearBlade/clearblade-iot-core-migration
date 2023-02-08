@@ -45,7 +45,7 @@ func readCsvFile(filePath string) [][]string {
 	return records
 }
 
-func getProjectID(filePath string) string {
+func getGCPProjectID(filePath string) string {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatalln("Error when opening json file: ", err)
@@ -77,7 +77,7 @@ func getCBProjectID(filePath string) string {
 
 func getGCPRegistryPath() string {
 	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getProjectID(val), Args.gcpRegistryRegion, Args.registryName)
+	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getGCPProjectID(val), Args.gcpRegistryRegion, Args.registryName)
 	return parent
 }
 

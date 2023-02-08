@@ -41,18 +41,14 @@ var fields = &fieldmaskpb.FieldMask{
 }
 
 func fetchDevicesFromGoogleIotCore(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
-
-	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion + "/registries/" + Args.registryName
-
 	if Args.devicesCsvFile != "" {
-		return fetchDevicesFromCSV(ctx, gcpClient, parent)
+		return fetchDevicesFromCSV(ctx, gcpClient)
 	}
 
-	return fetchAllDevices(ctx, gcpClient, parent)
+	return fetchAllDevices(ctx, gcpClient)
 }
 
-func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerClient, parent string) ([]*gcpiotpb.Device, map[string]interface{}) {
+func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
 
 	absDevicesCsvFilePath, err := getAbsPath(Args.devicesCsvFile)
 	if err != nil {
@@ -86,7 +82,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 			}
 
 			req := &gcpiotpb.ListDevicesRequest{
-				Parent:    parent,
+				Parent:    getGCPRegistryPath(),
 				DeviceIds: batchDeviceIds,
 				FieldMask: fields,
 			}
@@ -99,7 +95,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 	}
 
 	req := &gcpiotpb.ListDevicesRequest{
-		Parent:    parent,
+		Parent:    getGCPRegistryPath(),
 		DeviceIds: deviceIds,
 		FieldMask: fields,
 	}
@@ -109,10 +105,10 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 	return devices, deviceConfigs
 }
 
-func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient, parent string) ([]*gcpiotpb.Device, map[string]interface{}) {
+func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
 
 	req := &gcpiotpb.ListDevicesRequest{
-		Parent:    parent,
+		Parent:    getGCPRegistryPath(),
 		FieldMask: fields,
 	}
 
@@ -338,6 +334,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 			errorLogs = append(errorLogs, ErrorLog{
 				DeviceId: device.Id,
 				Context:  "Create Device",
+				Error:    fmt.Errorf("Status Code: %d", statusCode),
 			})
 			continue
 		}
@@ -348,7 +345,6 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 		}
 
 		statusCode, err = updateDevice(deviceService, device)
-		fmt.Println(statusCode)
 
 		if err != nil {
 			errorLogs = append(errorLogs, ErrorLog{
@@ -363,6 +359,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 			errorLogs = append(errorLogs, ErrorLog{
 				DeviceId: device.Id,
 				Context:  "Patch Device",
+				Error:    fmt.Errorf("Status Code: %d", statusCode),
 			})
 			continue
 		}
@@ -412,7 +409,7 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
 		}
 
-		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBRegistryPath(), config)
+		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBDevicePath(device.Id), config)
 		resp, err := updateConfigCall.Do()
 
 		if err != nil {
