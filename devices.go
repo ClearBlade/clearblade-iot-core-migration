@@ -319,51 +319,24 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
 
-		statusCode, err := createDevice(deviceService, device)
+		err := createDevice(deviceService, device)
 
-		if err != nil {
-			errorLogs = append(errorLogs, ErrorLog{
-				DeviceId: device.Id,
-				Context:  "Network Error when Creating Device",
-				Error:    err,
-			})
-			continue
-		}
-
-		if statusCode != http.StatusInternalServerError && statusCode != http.StatusOK {
-			errorLogs = append(errorLogs, ErrorLog{
-				DeviceId: device.Id,
-				Context:  "Create Device",
-				Error:    fmt.Errorf("Status Code: %d", statusCode),
-			})
-			continue
-		}
-
-		if statusCode == http.StatusOK {
+		//TODO - Needs better error handling to distinguish between device not created & device already exists
+		if err == nil {
 			i += 1
 			continue
 		}
 
-		statusCode, err = updateDevice(deviceService, device)
+		err = updateDevice(deviceService, device)
 
 		if err != nil {
 			errorLogs = append(errorLogs, ErrorLog{
 				DeviceId: device.Id,
-				Context:  "Network Error when Patching Device",
+				Context:  "Network Error when Creating/Patching Device",
 				Error:    err,
 			})
 			continue
 		}
-
-		if statusCode != http.StatusOK {
-			errorLogs = append(errorLogs, ErrorLog{
-				DeviceId: device.Id,
-				Context:  "Patch Device",
-				Error:    fmt.Errorf("Status Code: %d", statusCode),
-			})
-			continue
-		}
-
 		i += 1
 	}
 
@@ -383,7 +356,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 	return errorLogs
 }
 
-func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) (int, error) {
+func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 
 	patchCall := deviceService.Patch(getCBDevicePath(device.Id), transform(device))
 
@@ -393,14 +366,10 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 		patchCall.UpdateMask("blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
 	}
 
-	resp, err := patchCall.Do()
+	_, err := patchCall.Do()
 
 	if err != nil {
-		return http.StatusServiceUnavailable, err
-	}
-
-	if resp.ServerResponse.HTTPStatusCode != http.StatusOK {
-		return resp.ServerResponse.HTTPStatusCode, nil
+		return err
 	}
 
 	if !Args.skipConfig {
@@ -410,30 +379,23 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 		}
 
 		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBDevicePath(device.Id), config)
-		resp, err := updateConfigCall.Do()
+		_, err := updateConfigCall.Do()
 
 		if err != nil {
-			fmt.Println(resp)
-			return http.StatusServiceUnavailable, err
+			return err
 		}
 
-		return resp.ServerResponse.HTTPStatusCode, nil
+		return nil
 	}
 
-	return resp.ServerResponse.HTTPStatusCode, nil
+	return nil
 
 }
 
-func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) (int, error) {
+func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 	call := deviceService.Create(getCBRegistryPath(), transform(device))
-	resp, err := call.Do()
-
-	if err != nil {
-		return http.StatusServiceUnavailable, err
-	}
-
-	return resp.ServerResponse.HTTPStatusCode, nil
-
+	_, err := call.Do()
+	return err
 }
 
 func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
