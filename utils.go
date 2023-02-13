@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -16,10 +15,10 @@ import (
 	"strings"
 	"time"
 
+	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
 	"github.com/k0kubun/go-ansi"
 	"github.com/schollz/progressbar/v3"
-	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 )
 
 func fileExists(filename string) bool {
@@ -46,13 +45,13 @@ func readCsvFile(filePath string) [][]string {
 	return records
 }
 
-func getProjectID(filePath string) string {
-	content, err := ioutil.ReadFile(filePath)
+func getGCPProjectID(filePath string) string {
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Fatalln("Error when opening json file: ", err)
 	}
 
-	var payload Data
+	var payload GCPConfig
 	err = json.Unmarshal(content, &payload)
 	if err != nil {
 		log.Fatalln("Error during Unmarshal(): ", err)
@@ -61,22 +60,39 @@ func getProjectID(filePath string) string {
 	return payload.Project_id
 }
 
-func getRegistryPath(region, registryId string) string {
+func getCBProjectID(filePath string) string {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatalln("Error when opening json file: ", err)
+	}
+
+	var payload CBConfig
+	err = json.Unmarshal(content, &payload)
+	if err != nil {
+		log.Fatalln("Error during Unmarshal(): ", err)
+	}
+
+	return payload.Project
+}
+
+func getGCPRegistryPath() string {
 	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getProjectID(val), region, registryId)
+	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getGCPProjectID(val), Args.gcpRegistryRegion, Args.registryName)
 	return parent
 }
 
-func getDevicePath(region, registryId, deviceId string) string {
-	return fmt.Sprintf("%s/devices/%s", getRegistryPath(region, registryId), deviceId)
+func getCBRegistryPath() string {
+	val, _ := getAbsPath(Args.cbServiceAccount)
+	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getCBProjectID(val), Args.cbRegistryRegion, Args.cbRegistryName)
+	return parent
 }
 
-func getCbRegistryPath() string {
-	return getRegistryPath(Args.cbRegistryRegion, Args.cbRegistryName)
-}
+// func getGCPDevicePath(deviceId string) string {
+// 	return fmt.Sprintf("%s/devices/%s", getGCPRegistryPath(), deviceId)
+// }
 
-func getGoogleRegistryPath() string {
-	return getRegistryPath(Args.gcpRegistryRegion, Args.registryName)
+func getCBDevicePath(deviceId string) string {
+	return fmt.Sprintf("%s/devices/%s", getCBRegistryPath(), deviceId)
 }
 
 func readInput(msg string) (string, error) {
@@ -169,7 +185,7 @@ func transform(device *gcpiotpb.Device) *cbiotcore.Device {
 		NumId:       device.NumId,
 	}
 
-	if device.Config != nil {
+	if device.Config != nil && !Args.skipConfig {
 		cbDevice.Config = &cbiotcore.DeviceConfig{
 			Version:         device.Config.Version,
 			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
@@ -222,7 +238,8 @@ func generateFailedDevicesCSV(errorLogs []ErrorLog) error {
 		if errorLogs[i].Error != nil {
 			errMsg = errorLogs[i].Error.Error()
 		}
-		fileContents += fmt.Sprintf(`%s,"%s",%s\n`, errorLogs[i].Context, errMsg, errorLogs[i].DeviceId)
+		fileContents += fmt.Sprintf(`%s,"%s",%s`, errorLogs[i].Context, errMsg, errorLogs[i].DeviceId)
+		fileContents += "\n"
 	}
 
 	if _, err := f.WriteString(fileContents); err != nil {

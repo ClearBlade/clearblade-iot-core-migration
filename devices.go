@@ -7,16 +7,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math"
 	"net/http"
 
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
 	"golang.org/x/exp/maps"
 	"google.golang.org/api/iterator"
-	gcpiotpb "google.golang.org/genproto/googleapis/cloud/iot/v1"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -41,18 +41,14 @@ var fields = &fieldmaskpb.FieldMask{
 }
 
 func fetchDevicesFromGoogleIotCore(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
-
-	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := "projects/" + getProjectID(val) + "/locations/" + Args.gcpRegistryRegion + "/registries/" + Args.registryName
-
 	if Args.devicesCsvFile != "" {
-		return fetchDevicesFromCSV(ctx, gcpClient, parent)
+		return fetchDevicesFromCSV(ctx, gcpClient)
 	}
 
-	return fetchAllDevices(ctx, gcpClient, parent)
+	return fetchAllDevices(ctx, gcpClient)
 }
 
-func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerClient, parent string) ([]*gcpiotpb.Device, map[string]interface{}) {
+func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
 
 	absDevicesCsvFilePath, err := getAbsPath(Args.devicesCsvFile)
 	if err != nil {
@@ -86,7 +82,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 			}
 
 			req := &gcpiotpb.ListDevicesRequest{
-				Parent:    parent,
+				Parent:    getGCPRegistryPath(),
 				DeviceIds: batchDeviceIds,
 				FieldMask: fields,
 			}
@@ -99,7 +95,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 	}
 
 	req := &gcpiotpb.ListDevicesRequest{
-		Parent:    parent,
+		Parent:    getGCPRegistryPath(),
 		DeviceIds: deviceIds,
 		FieldMask: fields,
 	}
@@ -109,10 +105,10 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 	return devices, deviceConfigs
 }
 
-func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient, parent string) ([]*gcpiotpb.Device, map[string]interface{}) {
+func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
 
 	req := &gcpiotpb.ListDevicesRequest{
-		Parent:    parent,
+		Parent:    getGCPRegistryPath(),
 		FieldMask: fields,
 	}
 
@@ -226,9 +222,9 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 		return
 	}
 
-	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
+	bar := getProgressBar(len(gateways), "\nMigrating bound devices for gateways...")
 
-	parent := getCbRegistryPath()
+	parent := getCBRegistryPath()
 
 	for _, gateway := range gateways {
 		if barErr := bar.Add(1); barErr != nil {
@@ -236,7 +232,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 		}
 
 		boundDevicesIterator := gcpIotClient.ListDevices(ctx, &gcpiotpb.ListDevicesRequest{
-			Parent: getGoogleRegistryPath(),
+			Parent: getGCPRegistryPath(),
 			GatewayListOptions: &gcpiotpb.GatewayListOptions{
 				Filter: &gcpiotpb.GatewayListOptions_AssociationsGatewayId{
 					AssociationsGatewayId: gateway.Id,
@@ -259,7 +255,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 				break
 			}
 
-			getDeviceResp, err := deviceService.Get(getDevicePath(Args.cbRegistryRegion, Args.cbRegistryName, resp.Id)).Do()
+			getDeviceResp, err := deviceService.Get(getCBDevicePath(resp.Id)).Do()
 			if err != nil {
 				errorLogs = append(errorLogs, ErrorLog{
 					Context:  "Get Bound Device",
@@ -312,7 +308,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 	}
 }
 
-func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) {
+func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
 	i := 0
 
@@ -324,17 +320,22 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 		}
 
 		err := createDevice(deviceService, device)
+
+		//TODO - Needs better error handling to distinguish between device not created & device already exists
+		if err == nil {
+			i += 1
+			continue
+		}
+
+		err = updateDevice(deviceService, device)
+
 		if err != nil {
-			err := updateDevice(deviceService, device)
-			if err != nil {
-				log.Println("Unable to insert device: ", device.Id, ". Reason: ", err)
-				errorLogs = append(errorLogs, ErrorLog{
-					DeviceId: device.Id,
-					Context:  "Create/Update Device",
-					Error:    err,
-				})
-				continue
-			}
+			errorLogs = append(errorLogs, ErrorLog{
+				DeviceId: device.Id,
+				Context:  "Network Error when Creating/Patching Device",
+				Error:    err,
+			})
+			continue
 		}
 		i += 1
 	}
@@ -351,11 +352,13 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 	} else {
 		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", i, "/", len(devices), "devices!", string(colorReset))
 	}
+
+	return errorLogs
 }
 
 func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
 
-	patchCall := deviceService.Patch(device.Name, transform(device))
+	patchCall := deviceService.Patch(getCBDevicePath(device.Id), transform(device))
 
 	if Args.updatePublicKeys {
 		patchCall.UpdateMask("credentials,blocked,metadata,logLevel,gatewayConfig.gatewayAuthMethod")
@@ -364,16 +367,35 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	}
 
 	_, err := patchCall.Do()
-	return err
+
+	if err != nil {
+		return err
+	}
+
+	if !Args.skipConfig {
+		config := &cbiotcore.ModifyCloudToDeviceConfigRequest{
+			VersionToUpdate: 0,
+			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
+		}
+
+		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBDevicePath(device.Id), config)
+		_, err := updateConfigCall.Do()
+
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	return nil
 
 }
 
 func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
-
-	call := deviceService.Create(getCbRegistryPath(), transform(device))
+	call := deviceService.Create(getCBRegistryPath(), transform(device))
 	_, err := call.Do()
 	return err
-
 }
 
 func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
@@ -399,7 +421,7 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]in
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
 	}

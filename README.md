@@ -4,7 +4,7 @@ Go tool that migrates devices from Google IoT Core registries to ClearBlade devi
 
 ## Prerequisites
 
-This tool is designed to move devices after you have already enabled the offering in the Google Cloud marketplace and have connected your project. If you haven't done that already, refer the folowing documents to -
+This tool is designed to move devices after you have already enabled the ClearBlade offering in the Google Cloud marketplace and have connected your project. If you haven't done that already, refer the folowing documents to -
 
 1. [Activate Marketplace offering](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2230976570/Google+Cloud+Marketplace+Activation)
 2. [Migrating existing registries](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2207449095/Migration+Tutorial)
@@ -24,6 +24,7 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Device to migrate CSV file path                                                                                                                                        | `devicesCsv`        | N/A                   | `No`     |
 | Update public keys for existing devices                                                                                                                                | `updatePublicKeys`  | `true`                | `No`     |
 | Store Config Version History                                                                                                                                           | `configHistory`     | `false`               | `No`     |
+| Skip Migrating Latest Config                                                                                                                                           | `skipConfig`        | `false`               | `No`     |
 
 ## Setup
 
@@ -51,7 +52,7 @@ You will be prompted to enter a devices CSV file path that would be used to migr
 
 The tool was written in Go and therefore requires Go to be installed (https://golang.org/doc/install). In order to compile the tool for execution, the following steps need to be performed:
 
-1.  Retrieve the adapter source code
+1.  Retrieve the migration tool source code
     - `git clone git@github.com:ClearBlade/clearblade-iot-core-migration.git`
 2.  Navigate to the _clearblade-iot-core-migration_ directory
     - `cd clearblade-iot-core-migration`

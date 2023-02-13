@@ -8,7 +8,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.11.0
 	golang.org/x/exp v0.0.0-20221012211006-4de253d81b95
 	google.golang.org/api v0.107.0
-	google.golang.org/genproto v0.0.0-20230113154510-dbe35b8444a5
+	google.golang.org/genproto v0.0.0-20230202175211-008b39050e57
 	google.golang.org/protobuf v1.28.1
 )
 
@@ -16,7 +16,7 @@ require (
 	cloud.google.com/go/compute v1.14.0 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
 	cloud.google.com/go/iam v0.8.0 // indirect
-	github.com/clearblade/go-iot v0.0.0-20230131211312-cc04bdd43805 // indirect
+	github.com/clearblade/go-iot v0.0.0-20230213164737-7096d2cb8322 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
