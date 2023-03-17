@@ -11,6 +11,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strings"
 
 	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
@@ -319,20 +320,41 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
 
-		err := createDevice(deviceService, device)
+		resp, err := createDevice(deviceService, device)
 
-		//TODO - Needs better error handling to distinguish between device not created & device already exists
+		// Create Device Successful
 		if err == nil {
 			i += 1
 			continue
 		}
 
+		// Checking if device exists - status code 409
+		if !strings.Contains(err.Error(), "Error 409") {
+			errorLogs = append(errorLogs, ErrorLog{
+				DeviceId: device.Id,
+				Context:  "Error when Creating Device",
+				Error:    err,
+			})
+			continue
+		}
+
+		// Checking if network error
+		if resp != nil && resp.ServerResponse.HTTPStatusCode != http.StatusConflict {
+			errorLogs = append(errorLogs, ErrorLog{
+				DeviceId: device.Id,
+				Context:  "Error when Creating Device",
+				Error:    err,
+			})
+			continue
+		}
+
+		// If Device exists, patch it
 		err = updateDevice(deviceService, device)
 
 		if err != nil {
 			errorLogs = append(errorLogs, ErrorLog{
 				DeviceId: device.Id,
-				Context:  "Network Error when Creating/Patching Device",
+				Context:  "Error when Patching Device",
 				Error:    err,
 			})
 			continue
@@ -392,10 +414,10 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 
 }
 
-func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
+func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) (*cbiotcore.Device, error) {
 	call := deviceService.Create(getCBRegistryPath(), transform(device))
-	_, err := call.Do()
-	return err
+	createDevResp, err := call.Do()
+	return createDevResp, err
 }
 
 func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
