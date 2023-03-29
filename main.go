@@ -41,6 +41,7 @@ type DeviceMigratorArgs struct {
 	configHistory    bool
 	updatePublicKeys bool
 	skipConfig       bool
+	silentMode       bool
 }
 
 func initMigrationFlags() {
@@ -57,6 +58,7 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.configHistory, "configHistory", false, "Store Config History. Default is false")
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
+	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
 }
 
 func main() {
@@ -132,6 +134,10 @@ func main() {
 func validateCBFlags(gcpRegistryRegion string) {
 
 	if Args.cbServiceAccount == "" {
+		if Args.silentMode {
+			log.Fatalln("-cbServiceAccount is a required paramter")
+		}
+
 		value, err := readInput("Enter path to ClearBlade service account file. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project for more info: ")
 		if err != nil {
 			log.Fatalln("Error reading service account: ", err)
@@ -150,6 +156,9 @@ func validateCBFlags(gcpRegistryRegion string) {
 	}
 
 	if Args.cbRegistryName == "" {
+		if Args.silentMode {
+			log.Fatalln("-cbRegistryName is required parameter")
+		}
 		value, err := readInput("Enter ClearBlade Registry Name: ")
 		if err != nil {
 			log.Fatalln("Error reading registry name: ", err)
@@ -158,6 +167,10 @@ func validateCBFlags(gcpRegistryRegion string) {
 	}
 
 	if Args.cbRegistryRegion == "" {
+		if Args.silentMode {
+			Args.cbRegistryRegion = Args.gcpRegistryRegion
+			// log.Fatalln("-cbRegistryRegion is required parameter")
+		}
 		value, err := readInput("Enter ClearBlade Registry Region (Press enter to skip if you are migrating to the same region): ")
 		if err != nil {
 			log.Fatalln("Error reading registry region: ", err)
@@ -175,6 +188,9 @@ func validateCBFlags(gcpRegistryRegion string) {
 
 func validateGCPIoTCoreFlags() {
 	if Args.serviceAccountFile == "" {
+		if Args.silentMode {
+			log.Fatalln("-gcpServiceAccount is required parameter")
+		}
 		value, err := readInput("Enter GCP Service Account File path (.json): ")
 		if err != nil {
 			log.Fatalln("Error reading service account file path: ", err)
@@ -183,6 +199,9 @@ func validateGCPIoTCoreFlags() {
 	}
 
 	if Args.registryName == "" {
+		if Args.silentMode {
+			log.Fatalln("-gcpRegistryName is required parameter")
+		}
 		value, err := readInput("Enter Google Registry Name: ")
 		if err != nil {
 			log.Fatalln("Error reading registry name: ", err)
@@ -191,6 +210,9 @@ func validateGCPIoTCoreFlags() {
 	}
 
 	if Args.gcpRegistryRegion == "" {
+		if Args.silentMode {
+			log.Fatalln("-gcpRegistryRegion is required parameter")
+		}
 		value, err := readInput("Enter GCP Registry Region: ")
 		if err != nil {
 			log.Fatalln("Error reading GCP registry region: ", err)
@@ -199,6 +221,9 @@ func validateGCPIoTCoreFlags() {
 	}
 
 	if Args.devicesCsvFile == "" {
+		if Args.silentMode {
+			return
+		}
 		value, err := readInput("Enter Devices CSV file path (By default all devices from the registry will be migrated. Press enter to skip!): ")
 		if err != nil {
 			log.Fatalln("Error reading service account file path: ", err)

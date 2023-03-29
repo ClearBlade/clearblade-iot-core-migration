@@ -13,18 +13,19 @@ This tool is designed to move devices after you have already enabled the ClearBl
 
 This tool allows multiple CLI flags for starting the migration. See the below chart for available start options as well as their defaults.
 
-| Name                                                                                                                                                                   | CLI Flag            | Default               | Required |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------- | -------- |
-| Path to ClearBlade Service Account File ([see here for more info](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project)) | `cbServiceAccount`  | N/A                   | `Yes`    |
-| ClearBlade Registry Name                                                                                                                                            | `cbRegistryName`    | N/A                   | `Yes`    |
-| ClearBlade Registry Region                                                                                                                                             | `cbRegistryRegion`  | `<gcpRegistryRegion>` | `No`     |
-| Google IoT Core Registry Name                                                                                                                                          | `gcpRegistryName`   | N/A                   | `Yes`    |
-| Google IoT Core Registry Region                                                                                                                                        | `gcpRegistryRegion` | N/A                   | `Yes`    |
-| GCP Service account file path                                                                                                                                          | `gcpServiceAccount` | N/A                   | `Yes`    |
-| Device to migrate CSV file path                                                                                                                                        | `devicesCsv`        | N/A                   | `No`     |
-| Update public keys for existing devices                                                                                                                                | `updatePublicKeys`  | `true`                | `No`     |
-| Store Config Version History                                                                                                                                           | `configHistory`     | `false`               | `No`     |
-| Skip Migrating Latest Config                                                                                                                                           | `skipConfig`        | `false`               | `No`     |
+| Name | CLI Flag | Default | Required |
+| ---- | -------- | ------- | -------- |
+| Path to ClearBlade Service Account File ([see here for more info](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project))          | `cbServiceAccount`  | N/A                   | `Yes`  |
+| ClearBlade Registry Name                | `cbRegistryName`    | N/A                   | `Yes`  |
+| ClearBlade Registry Region              | `cbRegistryRegion`  | `<gcpRegistryRegion>` | `No`   |
+| Google IoT Core Registry Name           | `gcpRegistryName`   | N/A                   | `Yes`  |
+| Google IoT Core Registry Region         | `gcpRegistryRegion` | N/A                   | `Yes`  |
+| GCP Service account file path           | `gcpServiceAccount` | N/A                   | `Yes`  |
+| Device to migrate CSV file path         | `devicesCsv`        | N/A                   | `No`   |
+| Update public keys for existing devices | `updatePublicKeys`  | `true`                | `No`   |
+| Store Config Version History            | `configHistory`     | `false`               | `No`   |
+| Skip Migrating Latest Config            | `skipConfig`        | `false`               | `No`   |
+| Non-Interactive (silent) Mode           | `silentMode`        | `false`               | `No`   |
 
 ## Setup
 
@@ -38,7 +39,9 @@ Install & run the latest binary from https://github.com/ClearBlade/clearblade-io
 
 `clearblade-iot-core-migration -cbServiceAccount <JSON_FILE_PATH> -cbRegistryName <CB_IOT_CORE_REGISTRY> -cbRegistryRegion <CB_PROJECT_REGION> -gcpServiceAccount <JSON_FILE_PATH> -gcpRegistryName <IOT_CORE_REGISTRY> -gcpRegistryRegion <GCP_PROJECT_REGION>`
 
-You will be prompted to enter a devices CSV file path that would be used to migrate devices specified in the CSV file. You can skip this step by pressing enter and by default all devices from the registry will be migrated.
+**To run the tool in non-interactive mode, add `--silentMode` flag to the above start command** 
+
+You will be prompted to enter a devices CSV file path that would be used to migrate devices specified in the CSV file. You can skip this step by pressing enter and by default all devices from the registry will be migrated. Alternatively, you can set `-interactiveMode=false` to make this tool fully automated.
 
 **Note - We recommend you to use linux or darwin binaries. It's unlikely but possible something could fail during the migration. A failed_devices CSV file will be created at the end of this migration. Please submit this file to the [ClearBlade Support](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20) and we will ensure 100% success**
 
