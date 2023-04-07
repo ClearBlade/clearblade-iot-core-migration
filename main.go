@@ -37,11 +37,12 @@ type DeviceMigratorArgs struct {
 	gcpRegistryRegion  string
 
 	// Optional flags
-	devicesCsvFile   string
-	configHistory    bool
-	updatePublicKeys bool
-	skipConfig       bool
-	silentMode       bool
+	devicesCsvFile    string
+	configHistory     bool
+	updatePublicKeys  bool
+	skipConfig        bool
+	silentMode        bool
+	cleanupCbRegistry bool
 }
 
 func initMigrationFlags() {
@@ -59,6 +60,7 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
+	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
 }
 
 func main() {
@@ -115,6 +117,11 @@ func main() {
 	}
 
 	errorLogs := make([]ErrorLog, 0)
+
+	if Args.cleanupCbRegistry {
+		deleteAllFromCbRegistry(service)
+		fmt.Println(string(colorGreen), "\n\n\u2713 Successfully Cleaned up ClearBlade registry!\n", string(colorReset))
+	}
 
 	// Add fetched devices to ClearBlade Device table
 	errorLogs = addDevicesToClearBlade(service, devices, deviceConfigs, errorLogs)

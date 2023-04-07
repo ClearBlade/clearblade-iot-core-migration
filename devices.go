@@ -208,6 +208,34 @@ func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, cli
 	return configs
 }
 
+func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDeviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, cbRegistryService *cbiotcore.ProjectsLocationsRegistriesService) {
+	// fetch bound devices
+	// if gateway doesn't exists -> do error checking and return
+	// if gateway exists, but no bound devices -> do check and return
+	// if gateway exists and bound devices present -> unbind all devices & delete gateway
+
+	boundDevices, err := cbDeviceService.List(parent).GatewayListOptionsAssociationsGatewayId(gateway).Do()
+
+	if err != nil {
+		log.Fatalln("Unable to fetch boundDevices for existing gateways from CB registry: ", err.Error())
+	}
+
+	if len(boundDevices.Devices) == 0 {
+		return
+	}
+
+	for i := 0; i < len(boundDevices.Devices); i++ {
+		_, err := cbRegistryService.UnbindDeviceFromGateway(parent, &cbiotcore.UnbindDeviceFromGatewayRequest{
+			DeviceId:  boundDevices.Devices[i].Id,
+			GatewayId: gateway,
+		}).Do()
+
+		if err != nil {
+			fmt.Printf("Unable to unbind device %s from gateway %s. Reason: %s", boundDevices.Devices[i].Id, gateway, err.Error())
+		}
+	}
+}
+
 func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *gcpiotcore.DeviceManagerClient, ctx context.Context, devices []*gcpiotpb.Device, errorLogs []ErrorLog) {
 	gateways := make([]*gcpiotpb.Device, 0)
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
@@ -223,7 +251,8 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 		return
 	}
 
-	bar := getProgressBar(len(gateways), "\nMigrating bound devices for gateways...")
+	fmt.Println()
+	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
 
 	parent := getCBRegistryPath()
 
@@ -231,6 +260,8 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
+
+		unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway.Id, parent, deviceService, registryService)
 
 		boundDevicesIterator := gcpIotClient.ListDevices(ctx, &gcpiotpb.ListDevicesRequest{
 			Parent: getGCPRegistryPath(),
@@ -258,14 +289,15 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 
 			getDeviceResp, err := deviceService.Get(getCBDevicePath(resp.Id)).Do()
 			if err != nil {
-				errorLogs = append(errorLogs, ErrorLog{
-					Context:  "Get Bound Device",
-					Error:    err,
-					DeviceId: resp.Id,
-				})
-				continue
-			}
-			if getDeviceResp.ServerResponse.HTTPStatusCode == http.StatusNotFound {
+				if !strings.Contains(err.Error(), "Error 404") {
+					errorLogs = append(errorLogs, ErrorLog{
+						Context:  "Create Bound Device",
+						Error:    err,
+						DeviceId: resp.Id,
+					})
+					continue
+				}
+
 				_, createErr := deviceService.Create(parent, transform(resp)).Do()
 				if createErr != nil {
 					errorLogs = append(errorLogs, ErrorLog{
@@ -273,14 +305,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 						Error:    createErr,
 						DeviceId: resp.Id,
 					})
-					continue
 				}
-			} else if getDeviceResp.ServerResponse.HTTPStatusCode != http.StatusOK {
-				errorLogs = append(errorLogs, ErrorLog{
-					Context:  "Get Bound Device non-200 status",
-					DeviceId: resp.Id,
-				})
-				continue
 			}
 
 			bindDeviceResp, err := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
@@ -461,4 +486,51 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]in
 	}
 
 	return nil
+}
+
+func deleteAllFromCbRegistry(service *cbiotcore.Service) {
+	//Delete all devices
+	parent := getCBRegistryPath()
+	cbDeviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
+
+	//FetchGateways
+	resp, err := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").Do()
+
+	if err != nil {
+		log.Fatalln("Unable to list gateways from CB registry. Reason: ", err.Error())
+	}
+
+	if len(resp.Devices) == 0 {
+		return
+	}
+
+	spinner := getSpinner("Cleaning Up ClearBlade Registry...")
+
+	for _, device := range resp.Devices {
+		//Unbind devices from all gateways
+		unbindFromGatewayIfAlreadyExistsInCBRegistry(device.Id, parent, cbDeviceService, registryService)
+		//Delete all gateways
+		if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
+			log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())
+		}
+		if err := spinner.Add(1); err != nil {
+			log.Fatalln("Unable to add to spinner: ", err)
+		}
+	}
+
+	resp, err = cbDeviceService.List(parent).Do()
+	if err != nil {
+		log.Fatalln("Unable to list devices from CB registry. Reason: ", err.Error())
+	}
+
+	for _, device := range resp.Devices {
+		//Delete all devices
+		if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
+			log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())
+		}
+		if err := spinner.Add(1); err != nil {
+			log.Fatalln("Unable to add to spinner: ", err)
+		}
+	}
 }
