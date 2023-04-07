@@ -1,4 +1,4 @@
 .vscode
-devices.csv
-test.csv
+*.csv
 dist/
+clearblade-iot-core-migration
