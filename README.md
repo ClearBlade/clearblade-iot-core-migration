@@ -16,16 +16,17 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Name | CLI Flag | Default | Required |
 | ---- | -------- | ------- | -------- |
 | Path to ClearBlade Service Account File ([see here for more info](https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project))          | `cbServiceAccount`  | N/A                   | `Yes`  |
-| ClearBlade Registry Name                | `cbRegistryName`    | N/A                   | `Yes`  |
-| ClearBlade Registry Region              | `cbRegistryRegion`  | `<gcpRegistryRegion>` | `No`   |
-| Google IoT Core Registry Name           | `gcpRegistryName`   | N/A                   | `Yes`  |
-| Google IoT Core Registry Region         | `gcpRegistryRegion` | N/A                   | `Yes`  |
-| GCP Service account file path           | `gcpServiceAccount` | N/A                   | `Yes`  |
-| Device to migrate CSV file path         | `devicesCsv`        | N/A                   | `No`   |
-| Update public keys for existing devices | `updatePublicKeys`  | `true`                | `No`   |
-| Store Config Version History            | `configHistory`     | `false`               | `No`   |
-| Skip Migrating Latest Config            | `skipConfig`        | `false`               | `No`   |
-| Non-Interactive (silent) Mode           | `silentMode`        | `false`               | `No`   |
+| ClearBlade Registry Name                | `cbRegistryName`     | N/A                   | `Yes`  |
+| ClearBlade Registry Region              | `cbRegistryRegion`   | `<gcpRegistryRegion>` | `No`   |
+| Google IoT Core Registry Name           | `gcpRegistryName`    | N/A                   | `Yes`  |
+| Google IoT Core Registry Region         | `gcpRegistryRegion`  | N/A                   | `Yes`  |
+| GCP Service account file path           | `gcpServiceAccount`  | N/A                   | `Yes`  |
+| Device to migrate CSV file path         | `devicesCsv`         | N/A                   | `No`   |
+| Update public keys for existing devices | `updatePublicKeys`   | `true`                | `No`   |
+| Store Config Version History            | `configHistory`      | `false`               | `No`   |
+| Skip Migrating Latest Config            | `skipConfig`         | `false`               | `No`   |
+| Non-Interactive (silent) Mode           | `silentMode`         | `false`               | `No`   |
+| Cleanup existing CB registry            | `cleanupCbRegistry` | `false`               | `No`   |
 
 ## Setup
 
