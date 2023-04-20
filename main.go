@@ -105,16 +105,23 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	// Fetch devices from the given registry
-	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
-
-	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
-
 	cbCtx := context.Background()
 	service, err := cbiotcore.NewService(cbCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// GetRegistryCredentials
+	regDetails := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
+	if regDetails.SystemKey == "" {
+		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
+		os.Exit(0)
+	}
+
+	// Fetch devices from the given registry
+	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
+
+	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
 
 	errorLogs := make([]ErrorLog, 0)
 

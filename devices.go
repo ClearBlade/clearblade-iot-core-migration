@@ -494,8 +494,10 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 	cbDeviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
+	spinner := getSpinner("Cleaning Up ClearBlade Registry...")
+
 	//FetchGateways
-	resp, err := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").Do()
+	resp, err := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").PageSize(10000).Do()
 
 	if err != nil {
 		log.Fatalln("Unable to list gateways from CB registry. Reason: ", err.Error())
@@ -504,8 +506,6 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 	if len(resp.Devices) == 0 {
 		return
 	}
-
-	spinner := getSpinner("Cleaning Up ClearBlade Registry...")
 
 	for _, device := range resp.Devices {
 		//Unbind devices from all gateways
@@ -519,7 +519,7 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 		}
 	}
 
-	resp, err = cbDeviceService.List(parent).Do()
+	resp, err = cbDeviceService.List(parent).PageSize(10000).Do()
 	if err != nil {
 		log.Fatalln("Unable to list devices from CB registry. Reason: ", err.Error())
 	}
