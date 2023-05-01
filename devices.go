@@ -87,7 +87,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 				DeviceIds: batchDeviceIds,
 				FieldMask: fields,
 			}
-			devicesSubset, devicesSubsetConfigHistory := fetchDevices(req, ctx, client, len(batchDeviceIds))
+			devicesSubset, devicesSubsetConfigHistory := fetchDevices(req, ctx, client, batchDeviceIds)
 			devices = append(devices, devicesSubset...)
 			maps.Copy(deviceConfigs, devicesSubsetConfigHistory)
 		}
@@ -101,7 +101,7 @@ func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerCl
 		FieldMask: fields,
 	}
 
-	devices, deviceConfigs = fetchDevices(req, ctx, client, len(deviceIds))
+	devices, deviceConfigs = fetchDevices(req, ctx, client, deviceIds)
 
 	return devices, deviceConfigs
 }
@@ -145,9 +145,26 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 	return devices, deviceConfigs
 }
 
-func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client *gcpiotcore.DeviceManagerClient, devicesLength int) ([]*gcpiotpb.Device, map[string]interface{}) {
+func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []string {
+	missingDeviceIds := make([]string, 0)
+	for _, id := range deviceIds {
+		found := false
+		for _, device := range devices {
+			if device.Id == id {
+				found = true
+			}
+		}
+		if !found {
+			missingDeviceIds = append(missingDeviceIds, id)
+		}
+	}
+	return missingDeviceIds
+}
+
+func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client *gcpiotcore.DeviceManagerClient, deviceIds []string) ([]*gcpiotpb.Device, map[string]interface{}) {
 	var devices []*gcpiotpb.Device
 	deviceConfigs := make(map[string]interface{})
+	devicesLength := len(deviceIds)
 
 	it := client.ListDevices(ctx, req)
 	bar := getProgressBar(devicesLength, "Fetching devices from registry...")
@@ -164,6 +181,9 @@ func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client 
 
 			successMsg := "Fetched " + fmt.Sprint(len(devices)) + " / " + fmt.Sprint(devicesLength) + " devices!"
 			fmt.Println(string(colorGreen), "\n\u2713", successMsg, string(colorReset))
+			if len(devices) != devicesLength {
+				fmt.Printf("%sWarning: the following device IDs were not found - %s\n", string(colorYellow), strings.Join(getMissingDeviceIds(devices, deviceIds), ", "))
+			}
 			break
 		}
 
