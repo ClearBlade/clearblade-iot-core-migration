@@ -262,7 +262,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
 	for i := 0; i < len(devices); i++ {
-		if devices[i].GatewayConfig.GatewayType == *gcpiotpb.GatewayType_GATEWAY.Enum() {
+		if devices[i].GatewayConfig != nil && devices[i].GatewayConfig.GatewayType == *gcpiotpb.GatewayType_GATEWAY.Enum() {
 			gateways = append(gateways, devices[i])
 		}
 	}
