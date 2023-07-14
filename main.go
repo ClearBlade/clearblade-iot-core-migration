@@ -13,6 +13,8 @@ import (
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
+const TotalWorkers = 10
+
 var (
 	Args DeviceMigratorArgs
 )

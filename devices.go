@@ -356,55 +356,71 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 
 func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
-	i := 0
+	successfulCreates := 0
 
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
-	for _, device := range devices {
+	wp := NewWorkerPool(TotalWorkers)
+	wp.Run()
+
+	resultC := make(chan ErrorLog, len(devices))
+
+	for i := 0; i < len(devices); i++ {
+		idx := i
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
+		wp.AddTask(func() {
+			resp, err := createDevice(deviceService, devices[idx])
 
-		resp, err := createDevice(deviceService, device)
+			// Create Device Successful
+			if err == nil {
+				resultC <- ErrorLog{}
+				return
+			}
 
-		// Create Device Successful
-		if err == nil {
-			i += 1
-			continue
+			// Checking if device exists - status code 409
+			if !strings.Contains(err.Error(), "Error 409") {
+				resultC <- ErrorLog{
+					DeviceId: devices[idx].Id,
+					Context:  "Error when Creating Device",
+					Error:    err,
+				}
+				return
+			}
+
+			// Checking if network error
+			if resp != nil && resp.ServerResponse.HTTPStatusCode != http.StatusConflict {
+				resultC <- ErrorLog{
+					DeviceId: devices[idx].Id,
+					Context:  "Error when Creating Device",
+					Error:    err,
+				}
+				return
+			}
+
+			// If Device exists, patch it
+			err = updateDevice(deviceService, devices[idx])
+
+			if err != nil {
+				resultC <- ErrorLog{
+					DeviceId: devices[idx].Id,
+					Context:  "Error when Patching Device",
+					Error:    err,
+				}
+				return
+			}
+			resultC <- ErrorLog{}
+		})
+	}
+
+	for i := 0; i < len(devices); i++ {
+		res := <-resultC
+		if res.Error != nil {
+			errorLogs = append(errorLogs, res)
+		} else {
+			successfulCreates += 1
 		}
-
-		// Checking if device exists - status code 409
-		if !strings.Contains(err.Error(), "Error 409") {
-			errorLogs = append(errorLogs, ErrorLog{
-				DeviceId: device.Id,
-				Context:  "Error when Creating Device",
-				Error:    err,
-			})
-			continue
-		}
-
-		// Checking if network error
-		if resp != nil && resp.ServerResponse.HTTPStatusCode != http.StatusConflict {
-			errorLogs = append(errorLogs, ErrorLog{
-				DeviceId: device.Id,
-				Context:  "Error when Creating Device",
-				Error:    err,
-			})
-			continue
-		}
-
-		// If Device exists, patch it
-		err = updateDevice(deviceService, device)
-
-		if err != nil {
-			errorLogs = append(errorLogs, ErrorLog{
-				DeviceId: device.Id,
-				Context:  "Error when Patching Device",
-				Error:    err,
-			})
-			continue
-		}
-		i += 1
 	}
 
 	if len(deviceConfigs) != 0 {
@@ -414,10 +430,10 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 		}
 	}
 
-	if i == len(devices) {
-		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", i, "/", len(devices), "devices!", string(colorReset))
+	if successfulCreates == len(devices) {
+		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", successfulCreates, "/", len(devices), "devices!", string(colorReset))
 	} else {
-		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", i, "/", len(devices), "devices!", string(colorReset))
+		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", successfulCreates, "/", len(devices), "devices!", string(colorReset))
 	}
 
 	return errorLogs
