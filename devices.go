@@ -99,7 +99,7 @@ func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []strin
 	return missingDeviceIds
 }
 
-func fetchConfigVersionHistory(device *cbiotcore.Device, ctx context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
+func fetchConfigVersionHistory(device *cbiotcore.Device, _ context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
 	req := service.ConfigVersions.List(getCBSourceDevicePath(device.Id))
 	resp, err := req.Do()
 	if err != nil {
@@ -140,7 +140,9 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 	gateways := make([]*cbiotcore.Device, 0)
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
+	sourceDeviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(sourceService)
 
+	// First identify all gateways
 	for i := 0; i < len(sourceDevices); i++ {
 		if sourceDevices[i].GatewayConfig != nil && sourceDevices[i].GatewayConfig.GatewayType == "GATEWAY" {
 			gateways = append(gateways, sourceDevices[i])
@@ -155,26 +157,31 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
 
 	parent := getCBRegistryPath()
+	sourceParent := getCBSourceRegistryPath()
 
 	for _, gateway := range gateways {
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progressbar: ", barErr)
 		}
 
+		// First unbind any existing devices from the target gateway
 		unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway.Id, parent, deviceService, registryService)
 
-		cbSourceDeviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(sourceService)
-		//FetchGateways
-		resp, er := cbSourceDeviceService.List(getCBSourceRegistryPath()).GatewayListOptionsGatewayType("GATEWAY").PageSize(10000).Do()
-		if er != nil {
+		// Fetch devices bound to this specific gateway from source
+		boundDevices, err := sourceDeviceService.List(sourceParent).GatewayListOptionsAssociationsGatewayId(gateway.Id).PageSize(10000).Do()
+		if err != nil {
 			errorLogs = append(errorLogs, ErrorLog{
-				Context: "Get Gateway devices",
-				Error:   er,
+				Context:  "Get bound devices for gateway",
+				Error:    err,
+				DeviceId: gateway.Id,
 			})
-			break
+			continue
 		}
-		for _, device := range resp.Devices {
-			getDeviceResp, err := deviceService.Get(getCBDevicePath(device.Id)).Do()
+
+		// Process each bound device
+		for _, device := range boundDevices.Devices {
+			// Check if device exists in target registry
+			_, err := deviceService.Get(getCBDevicePath(device.Id)).Do()
 			if err != nil {
 				if !strings.Contains(err.Error(), "Error 404") {
 					errorLogs = append(errorLogs, ErrorLog{
@@ -185,6 +192,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 					continue
 				}
 
+				// Create device if it doesn't exist
 				_, createErr := deviceService.Create(parent, transform(device)).Do()
 				if createErr != nil {
 					errorLogs = append(errorLogs, ErrorLog{
@@ -192,9 +200,11 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 						Error:    createErr,
 						DeviceId: device.Id,
 					})
+					continue
 				}
 			}
 
+			// Bind the device to the gateway
 			bindDeviceResp, err := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
 				DeviceId:  device.Id,
 				GatewayId: gateway.Id,
@@ -213,7 +223,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 				errorLogs = append(errorLogs, ErrorLog{
 					Context:  "Bind device to gateway non-200 status",
 					Error:    err,
-					DeviceId: getDeviceResp.Id,
+					DeviceId: device.Id,
 				})
 				continue
 			}
@@ -222,7 +232,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 }
 
 func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
-	bar := getProgressBar(len(devices), "Migrating Devices...")
+	bar := getProgressBar(len(devices), "Migrating Devices and Gateways...")
 	successfulCreates := 0
 
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
@@ -298,7 +308,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	}
 
 	if successfulCreates == len(devices) {
-		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", successfulCreates, "/", len(devices), "devices!", string(colorReset))
+		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", successfulCreates, "/", len(devices), "devices and gateways!", string(colorReset))
 	} else {
 		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", successfulCreates, "/", len(devices), "devices!", string(colorReset))
 	}
