@@ -9,7 +9,7 @@ import (
 	"os"
 	"runtime"
 
-	gcpiotcore "cloud.google.com/go/iot/apiv1"
+	//gcpiotcore "cloud.google.com/go/iot/apiv1"
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
@@ -28,15 +28,15 @@ var (
 )
 
 type DeviceMigratorArgs struct {
-	// ClearBlade specific flags
+	// ClearBlade destination specific flags
 	cbServiceAccount string
 	cbRegistryName   string
 	cbRegistryRegion string
 
-	// GCP IoT Core specific flags
-	serviceAccountFile string
-	registryName       string
-	gcpRegistryRegion  string
+	// ClearBlade source specific flags
+	cbSourceServiceAccount string
+	cbSourceRegistryName   string
+	cbSourceRegion         string
 
 	// Optional flags
 	devicesCsvFile    string
@@ -48,13 +48,13 @@ type DeviceMigratorArgs struct {
 }
 
 func initMigrationFlags() {
-	flag.StringVar(&Args.cbServiceAccount, "cbServiceAccount", "", "Path to a ClearBlade service account file. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
-	flag.StringVar(&Args.cbRegistryName, "cbRegistryName", "", "ClearBlade Registry Name (Required)")
-	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Registry Region (Required)")
+	flag.StringVar(&Args.cbServiceAccount, "cbServiceAccount", "", "Path to a ClearBlade service account file for the destination registry. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
+	flag.StringVar(&Args.cbRegistryName, "cbRegistryName", "", "ClearBlade Destination Registry Name (Required)")
+	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Destination Registry Region (Required)")
 
-	flag.StringVar(&Args.serviceAccountFile, "gcpServiceAccount", "", "Service account file path (Required)")
-	flag.StringVar(&Args.registryName, "gcpRegistryName", "", "Google Registry Name (Required)")
-	flag.StringVar(&Args.gcpRegistryRegion, "gcpRegistryRegion", "", "Google Registry Region (Required)")
+	flag.StringVar(&Args.cbSourceServiceAccount, "cbSourceServiceAccount", "", "Path to a ClearBlade service account file for the source registry. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
+	flag.StringVar(&Args.cbSourceRegistryName, "cbSourceRegistryName", "", "ClearBlade Source Registry Name (Required)")
+	flag.StringVar(&Args.cbSourceRegion, "cbSourceRegion", "", "ClearBlade Source Registry Region (Required)")
 
 	// Optional
 	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path")
@@ -90,51 +90,56 @@ func main() {
 
 	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", string(colorReset))
 
-	// Validate if all required Google IOT Core flags are provided
-	validateGCPIoTCoreFlags()
+	// Validate if all required CB source flags are provided
+	validateSourceCBFlags()
 
-	// Validate if all required CB flags are provided
-	validateCBFlags(Args.gcpRegistryRegion)
+	// Validate if all required CB destination flags are provided
+	validateCBFlags(Args.cbSourceRegion)
 
 	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
 
-	// Authenticate GCP service user and Clearblade User account
-	ctx, gcpClient, err := authenticate()
-
-	defer gcpClient.Close()
-
+	// Authenticate CB source and destination accounts
+	sourceCtx := context.Background()
+	sourceService, err := cbiotcore.NewService(sourceCtx)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	cbCtx := context.Background()
-	service, err := cbiotcore.NewService(cbCtx)
+	sourceRegDetails := cbiotcore.GetRegistryCredentials(Args.cbSourceRegistryName, Args.cbSourceRegion, sourceService)
+	if sourceRegDetails.SystemKey == "" {
+		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
+		os.Exit(0)
+	}
+
+	destinationCtx := context.Background()
+	destinationService, err := cbiotcore.NewService(destinationCtx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// GetRegistryCredentials
-	regDetails := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
+	regDetails := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, destinationService)
 	if regDetails.SystemKey == "" {
-		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
+		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade destination registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
 		os.Exit(0)
 	}
 
 	// Fetch devices from the given registry
-	devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
+	//devices, deviceConfigs := fetchDevicesFromGoogleIotCore(ctx, gcpClient)
+	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceCtx, sourceService)
 
 	fmt.Println(string(colorCyan), "\nPreparing Device Migration\n", string(colorReset))
 
 	errorLogs := make([]ErrorLog, 0)
 
 	if Args.cleanupCbRegistry {
-		deleteAllFromCbRegistry(service)
-		fmt.Println(string(colorGreen), "\n\n\u2713 Successfully Cleaned up ClearBlade registry!\n", string(colorReset))
+		deleteAllFromCbRegistry(destinationService)
+		fmt.Println(string(colorGreen), "\n\n\u2713 Successfully Cleaned up destination ClearBlade registry!\n", string(colorReset))
 	}
 
 	// Add fetched devices to ClearBlade Device table
-	errorLogs = addDevicesToClearBlade(service, devices, deviceConfigs, errorLogs)
+	errorLogs = addDevicesToClearBlade(destinationService, devices, deviceConfigs, errorLogs)
 
+	// stopped here
 	migrateBoundDevicesToClearBlade(service, gcpClient, ctx, devices, errorLogs)
 
 	if len(errorLogs) > 0 {
@@ -145,6 +150,10 @@ func main() {
 
 	fmt.Println(string(colorGreen), "\n\n\u2713 Done!", string(colorReset))
 
+}
+
+func validateSourceCBFlags() {
+	// TODO implement this
 }
 
 func validateCBFlags(gcpRegistryRegion string) {
@@ -248,7 +257,7 @@ func validateGCPIoTCoreFlags() {
 	}
 }
 
-func authenticate() (context.Context, *gcpiotcore.DeviceManagerClient, error) {
+func authenticate() (context.Context, *cbiotcore.DeviceManagerClient, error) {
 	absServiceAccountPath, err := getAbsPath(Args.serviceAccountFile)
 	if err != nil {
 		errMsg := "Cannot resolve service account filepath: " + err.Error()

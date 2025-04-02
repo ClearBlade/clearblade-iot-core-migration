@@ -49,6 +49,15 @@ func fetchDevicesFromGoogleIotCore(ctx context.Context, gcpClient *gcpiotcore.De
 	return fetchAllDevices(ctx, gcpClient)
 }
 
+func fetchDevicesFromClearBladeIotCore(ctx context.Context, service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
+	if Args.devicesCsvFile != "" {
+		log.Fatalln("Migrating from CSV not supported yet")
+		//return fetchDevicesFromCSV(ctx, gcpClient)
+	}
+
+	return fetchAllDevicesFromClearBlade(ctx, service)
+}
+
 func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
 
 	absDevicesCsvFilePath, err := getAbsPath(Args.devicesCsvFile)
@@ -143,6 +152,11 @@ func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient
 
 	fmt.Println(string(colorGreen), "\u2713 Fetched", len(devices), "devices!", string(colorReset))
 	return devices, deviceConfigs
+}
+
+func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
+	// TODO - implement
+	return nil, nil
 }
 
 func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []string {
@@ -354,7 +368,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 	}
 }
 
-func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
+func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
 	bar := getProgressBar(len(devices), "Migrating Devices...")
 	successfulCreates := 0
 
@@ -439,7 +453,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*gcpiotpb.Devi
 	return errorLogs
 }
 
-func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) error {
+func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) error {
 
 	patchCall := deviceService.Patch(getCBDevicePath(device.Id), transform(device))
 
@@ -475,7 +489,7 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 
 }
 
-func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *gcpiotpb.Device) (*cbiotcore.Device, error) {
+func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) (*cbiotcore.Device, error) {
 	call := deviceService.Create(getCBRegistryPath(), transform(device))
 	createDevResp, err := call.Do()
 	return createDevResp, err
