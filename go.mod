@@ -4,10 +4,9 @@ go 1.18
 
 require (
 	cloud.google.com/go/iot v1.4.0
-	github.com/clearblade/go-iot v1.0.4
+	github.com/clearblade/go-iot v1.0.12
 	github.com/k0kubun/go-ansi v0.0.0-20180517002512-3bf9e2903213
 	github.com/schollz/progressbar/v3 v3.11.0
-	golang.org/x/exp v0.0.0-20221012211006-4de253d81b95
 	google.golang.org/api v0.107.0
 	google.golang.org/protobuf v1.28.1
 )

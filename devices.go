@@ -9,15 +9,11 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"strings"
 
-	gcpiotcore "cloud.google.com/go/iot/apiv1"
 	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
-	"golang.org/x/exp/maps"
-	"google.golang.org/api/iterator"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -41,122 +37,50 @@ var fields = &fieldmaskpb.FieldMask{
 		"gateway_config"},
 }
 
-func fetchDevicesFromGoogleIotCore(ctx context.Context, gcpClient *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
-	if Args.devicesCsvFile != "" {
-		return fetchDevicesFromCSV(ctx, gcpClient)
-	}
-
-	return fetchAllDevices(ctx, gcpClient)
-}
-
 func fetchDevicesFromClearBladeIotCore(ctx context.Context, service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
 	if Args.devicesCsvFile != "" {
 		log.Fatalln("Migrating from CSV not supported yet")
 		//return fetchDevicesFromCSV(ctx, gcpClient)
 	}
-
-	return fetchAllDevicesFromClearBlade(ctx, service)
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+	return fetchAllDevicesFromClearBlade(ctx, deviceService)
 }
 
-func fetchDevicesFromCSV(ctx context.Context, client *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
-
-	absDevicesCsvFilePath, err := getAbsPath(Args.devicesCsvFile)
-	if err != nil {
-		log.Fatalln("Cannot resolve devices CSV filepath: ", err.Error())
-	}
-
-	if !fileExists(absDevicesCsvFilePath) {
-		log.Fatalln("Unable to locate device CSV filepath: ", absDevicesCsvFilePath)
-	}
-
-	records := readCsvFile(absDevicesCsvFilePath)
-	var deviceIds []string
-	for _, line := range records {
-		deviceIds = append(deviceIds, line[0])
-	}
-
-	var devices []*gcpiotpb.Device
+func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) ([]*cbiotcore.Device, map[string]interface{}) {
+	var devices []*cbiotcore.Device
 	deviceConfigs := make(map[string]interface{})
-
-	if len(deviceIds) > 10000 {
-		fmt.Println("\nMore than 10k devices specified in the CSV file. Preparing to batch fetch devices...")
-		maxIterations := int(math.Floor(float64(len(deviceIds))/float64(10000))) + 1
-		for i := 0; i < maxIterations; i++ {
-			var batchDeviceIds []string
-			if i == maxIterations-1 {
-				batchDeviceIds = deviceIds[1+i*10000:]
-			} else if i == 0 {
-				batchDeviceIds = deviceIds[i*10000 : 10000+i*10000]
-			} else {
-				batchDeviceIds = deviceIds[1+i*10000 : 10000+i*10000]
-			}
-
-			req := &gcpiotpb.ListDevicesRequest{
-				Parent:    getGCPRegistryPath(),
-				DeviceIds: batchDeviceIds,
-				FieldMask: fields,
-			}
-			devicesSubset, devicesSubsetConfigHistory := fetchDevices(req, ctx, client, batchDeviceIds)
-			devices = append(devices, devicesSubset...)
-			maps.Copy(deviceConfigs, devicesSubsetConfigHistory)
-		}
-
-		return devices, deviceConfigs
-	}
-
-	req := &gcpiotpb.ListDevicesRequest{
-		Parent:    getGCPRegistryPath(),
-		DeviceIds: deviceIds,
-		FieldMask: fields,
-	}
-
-	devices, deviceConfigs = fetchDevices(req, ctx, client, deviceIds)
-
-	return devices, deviceConfigs
-}
-
-func fetchAllDevices(ctx context.Context, client *gcpiotcore.DeviceManagerClient) ([]*gcpiotpb.Device, map[string]interface{}) {
-
-	req := &gcpiotpb.ListDevicesRequest{
-		Parent:    getGCPRegistryPath(),
-		FieldMask: fields,
-	}
-
-	var devices []*gcpiotpb.Device
-	deviceConfigs := make(map[string]interface{})
-
-	it := client.ListDevices(ctx, req)
 	fmt.Println()
 	spinner := getSpinner("Fetching all devices from registry...")
+	req := service.List(getCBSourceRegistryPath()).PageSize(int64(10))
+	resp, err := req.Do()
+	if err != nil {
+		log.Fatalln("Error fetching all devices: ", err)
+	}
 
-	for {
-		resp, err := it.Next()
-		if err == iterator.Done {
-			break
-		}
-
-		if err != nil {
-			log.Fatalln("Unable to iterate over device records: ", err)
-		}
-
-		devices = append(devices, resp)
-
-		if Args.configHistory {
-			deviceConfigs[resp.Id] = fetchConfigVersionHistory(resp, ctx, client)
-		}
+	for resp.NextPageToken != "" {
+		devices = append(devices, resp.Devices...)
 
 		if err := spinner.Add(1); err != nil {
 			log.Fatalln("Unable to add to spinner: ", err)
 		}
+
+		resp, err = req.PageToken(resp.NextPageToken).Do()
+
+		if err != nil {
+			log.Fatalln("Error fetching all devices: ", err.Error())
+			break
+		}
 	}
 
-	fmt.Println(string(colorGreen), "\u2713 Fetched", len(devices), "devices!", string(colorReset))
+	if err == nil {
+		devices = append(devices, resp.Devices...)
+	}
+	if Args.configHistory {
+		for _, device := range devices {
+			deviceConfigs[device.Id] = fetchConfigVersionHistory(device, ctx, service)
+		}
+	}
 	return devices, deviceConfigs
-}
-
-func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
-	// TODO - implement
-	return nil, nil
 }
 
 func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []string {
@@ -175,71 +99,13 @@ func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []strin
 	return missingDeviceIds
 }
 
-func fetchDevices(req *gcpiotpb.ListDevicesRequest, ctx context.Context, client *gcpiotcore.DeviceManagerClient, deviceIds []string) ([]*gcpiotpb.Device, map[string]interface{}) {
-	var devices []*gcpiotpb.Device
-	deviceConfigs := make(map[string]interface{})
-	devicesLength := len(deviceIds)
-
-	it := client.ListDevices(ctx, req)
-	bar := getProgressBar(devicesLength, "Fetching devices from registry...")
-	for {
-		resp, err := it.Next()
-		if err == iterator.Done {
-			if err := bar.Finish(); err != nil {
-				log.Fatalln("Unable to finish progressbar: ", err)
-			}
-
-			if err := bar.Close(); err != nil {
-				log.Fatalln("Unable to Close progressbar: ", err)
-			}
-
-			successMsg := "Fetched " + fmt.Sprint(len(devices)) + " / " + fmt.Sprint(devicesLength) + " devices!"
-			fmt.Println(string(colorGreen), "\n\u2713", successMsg, string(colorReset))
-			if len(devices) != devicesLength {
-				fmt.Printf("%sWarning: the following device IDs were not found - %s\n", string(colorYellow), strings.Join(getMissingDeviceIds(devices, deviceIds), ", "))
-			}
-			break
-		}
-
-		if err != nil {
-			log.Fatalln("Unable to iterate over device records: ", err)
-		}
-
-		devices = append(devices, resp)
-		if Args.configHistory {
-			deviceConfigs[resp.Id] = fetchConfigVersionHistory(resp, ctx, client)
-		}
-
-		if err := bar.Add(1); err != nil {
-			log.Fatalln("Unable to add to progressbar: ", err)
-		}
-	}
-	return devices, deviceConfigs
-}
-
-func fetchConfigVersionHistory(device *gcpiotpb.Device, ctx context.Context, client *gcpiotcore.DeviceManagerClient) map[string]interface{} {
-	req := &gcpiotpb.ListDeviceConfigVersionsRequest{
-		Name:        device.Name,
-		NumVersions: 0,
-	}
-
-	deviceConfigVersions, err := client.ListDeviceConfigVersions(ctx, req)
-
+func fetchConfigVersionHistory(device *cbiotcore.Device, ctx context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
+	req := service.ConfigVersions.List(getCBSourceDevicePath(device.Id))
+	resp, err := req.Do()
 	if err != nil {
-		fmt.Println("Unable to fetch state history for device: ", device.Id, ". Reason: ", err)
+		log.Fatalln("fetchConfigVersionHistory ERROR: ", err)
 	}
-
-	configs := make(map[string]interface{})
-
-	for _, config := range deviceConfigVersions.GetDeviceConfigs() {
-		configs[fmt.Sprint(config.Version)] = map[string]interface{}{
-			"cloudUpdateTime": getTimeString(config.CloudUpdateTime.AsTime()),
-			"deviceAckTime":   getTimeString(config.DeviceAckTime.AsTime()),
-			"binaryData":      base64.StdEncoding.EncodeToString(config.BinaryData),
-		}
-	}
-
-	return configs
+	return resp.DeviceConfigs
 }
 
 func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDeviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, cbRegistryService *cbiotcore.ProjectsLocationsRegistriesService) {
@@ -270,14 +136,14 @@ func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDevi
 	}
 }
 
-func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *gcpiotcore.DeviceManagerClient, ctx context.Context, devices []*gcpiotpb.Device, errorLogs []ErrorLog) {
-	gateways := make([]*gcpiotpb.Device, 0)
+func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *cbiotcore.Service, sourceDevices []*cbiotcore.Device, errorLogs []ErrorLog) {
+	gateways := make([]*cbiotcore.Device, 0)
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
-	for i := 0; i < len(devices); i++ {
-		if devices[i].GatewayConfig != nil && devices[i].GatewayConfig.GatewayType == *gcpiotpb.GatewayType_GATEWAY.Enum() {
-			gateways = append(gateways, devices[i])
+	for i := 0; i < len(sourceDevices); i++ {
+		if sourceDevices[i].GatewayConfig != nil && sourceDevices[i].GatewayConfig.GatewayType == "GATEWAY" {
+			gateways = append(gateways, sourceDevices[i])
 		}
 	}
 
@@ -297,53 +163,40 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 
 		unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway.Id, parent, deviceService, registryService)
 
-		boundDevicesIterator := gcpIotClient.ListDevices(ctx, &gcpiotpb.ListDevicesRequest{
-			Parent: getGCPRegistryPath(),
-			GatewayListOptions: &gcpiotpb.GatewayListOptions{
-				Filter: &gcpiotpb.GatewayListOptions_AssociationsGatewayId{
-					AssociationsGatewayId: gateway.Id,
-				},
-			},
-			FieldMask: fields,
-		})
-
-		for {
-			resp, err := boundDevicesIterator.Next()
-			if err == iterator.Done {
-				break
-			}
-
-			if err != nil {
-				errorLogs = append(errorLogs, ErrorLog{
-					Context: "Bound Devices Iterator",
-					Error:   err,
-				})
-				break
-			}
-
-			getDeviceResp, err := deviceService.Get(getCBDevicePath(resp.Id)).Do()
+		cbSourceDeviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(sourceService)
+		//FetchGateways
+		resp, er := cbSourceDeviceService.List(getCBSourceRegistryPath()).GatewayListOptionsGatewayType("GATEWAY").PageSize(10000).Do()
+		if er != nil {
+			errorLogs = append(errorLogs, ErrorLog{
+				Context: "Get Gateway devices",
+				Error:   er,
+			})
+			break
+		}
+		for _, device := range resp.Devices {
+			getDeviceResp, err := deviceService.Get(getCBDevicePath(device.Id)).Do()
 			if err != nil {
 				if !strings.Contains(err.Error(), "Error 404") {
 					errorLogs = append(errorLogs, ErrorLog{
 						Context:  "Create Bound Device",
 						Error:    err,
-						DeviceId: resp.Id,
+						DeviceId: device.Id,
 					})
 					continue
 				}
 
-				_, createErr := deviceService.Create(parent, transform(resp)).Do()
+				_, createErr := deviceService.Create(parent, transform(device)).Do()
 				if createErr != nil {
 					errorLogs = append(errorLogs, ErrorLog{
 						Context:  "Create bound device",
 						Error:    createErr,
-						DeviceId: resp.Id,
+						DeviceId: device.Id,
 					})
 				}
 			}
 
 			bindDeviceResp, err := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
-				DeviceId:  resp.Id,
+				DeviceId:  device.Id,
 				GatewayId: gateway.Id,
 			}).Do()
 
@@ -351,7 +204,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gcpIotClient *g
 				errorLogs = append(errorLogs, ErrorLog{
 					Context:  "Bind device to gateway",
 					Error:    err,
-					DeviceId: resp.Id,
+					DeviceId: device.Id,
 				})
 				continue
 			}
@@ -472,7 +325,7 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	if !Args.skipConfig {
 		config := &cbiotcore.ModifyCloudToDeviceConfigRequest{
 			VersionToUpdate: 0,
-			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
+			BinaryData:      base64.StdEncoding.EncodeToString([]byte(device.Config.BinaryData)),
 		}
 
 		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBDevicePath(device.Id), config)
@@ -497,7 +350,7 @@ func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 
 func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
 
-	creds := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
+	creds, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
 
 	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}
 	postBody, _ := json.Marshal(transformedDeviceConfigHistory)

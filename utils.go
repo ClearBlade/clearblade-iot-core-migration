@@ -73,9 +73,13 @@ func getCBProjectID(filePath string) string {
 	return payload.Project
 }
 
-func getGCPRegistryPath() string {
-	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getGCPProjectID(val), Args.gcpRegistryRegion, Args.registryName)
+func getCBSourceDevicePath(deviceId string) string {
+	return fmt.Sprintf("%s/devices/%s", getCBSourceRegistryPath(), deviceId)
+}
+
+func getCBSourceRegistryPath() string {
+	val, _ := getAbsPath(Args.cbSourceServiceAccount)
+	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getCBProjectID(val), Args.cbSourceRegion, Args.cbSourceRegistryName)
 	return parent
 }
 
@@ -84,10 +88,6 @@ func getCBRegistryPath() string {
 	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getCBProjectID(val), Args.cbRegistryRegion, Args.cbRegistryName)
 	return parent
 }
-
-// func getGCPDevicePath(deviceId string) string {
-// 	return fmt.Sprintf("%s/devices/%s", getGCPRegistryPath(), deviceId)
-// }
 
 func getCBDevicePath(deviceId string) string {
 	return fmt.Sprintf("%s/devices/%s", getCBRegistryPath(), deviceId)
