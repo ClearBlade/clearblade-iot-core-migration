@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -15,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
 	"github.com/k0kubun/go-ansi"
 	"github.com/schollz/progressbar/v3"
@@ -75,9 +73,13 @@ func getCBProjectID(filePath string) string {
 	return payload.Project
 }
 
-func getGCPRegistryPath() string {
-	val, _ := getAbsPath(Args.serviceAccountFile)
-	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getGCPProjectID(val), Args.gcpRegistryRegion, Args.registryName)
+func getCBSourceDevicePath(deviceId string) string {
+	return fmt.Sprintf("%s/devices/%s", getCBSourceRegistryPath(), deviceId)
+}
+
+func getCBSourceRegistryPath() string {
+	val, _ := getAbsPath(Args.cbSourceServiceAccount)
+	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getCBProjectID(val), Args.cbSourceRegion, Args.cbSourceRegistryName)
 	return parent
 }
 
@@ -86,10 +88,6 @@ func getCBRegistryPath() string {
 	parent := fmt.Sprintf("projects/%s/locations/%s/registries/%s", getCBProjectID(val), Args.cbRegistryRegion, Args.cbRegistryName)
 	return parent
 }
-
-// func getGCPDevicePath(deviceId string) string {
-// 	return fmt.Sprintf("%s/devices/%s", getGCPRegistryPath(), deviceId)
-// }
 
 func getCBDevicePath(deviceId string) string {
 	return fmt.Sprintf("%s/devices/%s", getCBRegistryPath(), deviceId)
@@ -160,16 +158,16 @@ func getAbsPath(path string) (string, error) {
 	return filepath.Join(dir, path[1:]), nil
 }
 
-func transform(device *gcpiotpb.Device) *cbiotcore.Device {
+func transform(device *cbiotcore.Device) *cbiotcore.Device {
 
 	parsedCreds := make([]*cbiotcore.DeviceCredential, 0)
 	if Args.updatePublicKeys {
 		for _, creds := range device.Credentials {
 			parsedCreds = append(parsedCreds, &cbiotcore.DeviceCredential{
-				ExpirationTime: getTimeString(creds.GetExpirationTime().AsTime()),
+				ExpirationTime: creds.ExpirationTime,
 				PublicKey: &cbiotcore.PublicKeyCredential{
-					Format: creds.GetPublicKey().Format.String(),
-					Key:    creds.GetPublicKey().Key,
+					Format: creds.PublicKey.Format,
+					Key:    creds.PublicKey.Key,
 				},
 			})
 		}
@@ -179,7 +177,7 @@ func transform(device *gcpiotpb.Device) *cbiotcore.Device {
 		Id:          device.Id,
 		Blocked:     device.Blocked,
 		Credentials: parsedCreds,
-		LogLevel:    device.LogLevel.String(),
+		LogLevel:    device.LogLevel,
 		Metadata:    device.Metadata,
 		Name:        device.Id,
 		NumId:       device.NumId,
@@ -188,18 +186,18 @@ func transform(device *gcpiotpb.Device) *cbiotcore.Device {
 	if device.Config != nil && !Args.skipConfig {
 		cbDevice.Config = &cbiotcore.DeviceConfig{
 			Version:         device.Config.Version,
-			CloudUpdateTime: getTimeString(device.Config.CloudUpdateTime.AsTime()),
-			DeviceAckTime:   getTimeString(device.Config.DeviceAckTime.AsTime()),
-			BinaryData:      base64.StdEncoding.EncodeToString(device.Config.BinaryData),
+			CloudUpdateTime: device.Config.CloudUpdateTime,
+			DeviceAckTime:   device.Config.DeviceAckTime,
+			BinaryData:      device.Config.BinaryData,
 		}
 	}
 
 	if device.GatewayConfig != nil {
 		cbDevice.GatewayConfig = &cbiotcore.GatewayConfig{
-			GatewayType:             device.GatewayConfig.GatewayType.String(),
-			GatewayAuthMethod:       device.GatewayConfig.GatewayAuthMethod.String(),
+			GatewayType:             device.GatewayConfig.GatewayType,
+			GatewayAuthMethod:       device.GatewayConfig.GatewayAuthMethod,
 			LastAccessedGatewayId:   device.GatewayConfig.LastAccessedGatewayId,
-			LastAccessedGatewayTime: getTimeString(device.GatewayConfig.LastAccessedGatewayTime.AsTime()),
+			LastAccessedGatewayTime: device.GatewayConfig.LastAccessedGatewayTime,
 		}
 	}
 
