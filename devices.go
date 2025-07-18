@@ -310,11 +310,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 			resp, err := createDevice(deviceService, devices[idx])
 			// Create Device Successful
 			if err == nil {
-				resultC <- ErrorLog{
-					DeviceId: devices[idx].Id,
-					Context:  "Error when Creating Device",
-					Error:    errors.New("sample error"),
-				}
+				resultC <- ErrorLog{}
 				return
 			}
 
