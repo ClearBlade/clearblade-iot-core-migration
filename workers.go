@@ -1,13 +1,17 @@
 package main
 
+import "sync"
+
 type WorkerPool interface {
 	Run()
 	AddTask(task func())
+	Wait()
 }
 
 type workerPool struct {
 	maxWorkers  int
 	queuedTaskC chan func()
+	wg          sync.WaitGroup
 }
 
 // NewWorkerPool will create an instance of WorkerPool.
@@ -25,6 +29,7 @@ func (wp *workerPool) Run() {
 }
 
 func (wp *workerPool) AddTask(task func()) {
+	wp.wg.Add(1)
 	wp.queuedTaskC <- task
 }
 
@@ -37,7 +42,12 @@ func (wp *workerPool) run() {
 		go func() {
 			for task := range wp.queuedTaskC {
 				task()
+				wp.wg.Done()
 			}
 		}()
 	}
+}
+
+func (wp *workerPool) Wait() {
+	wp.wg.Wait()
 }

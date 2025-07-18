@@ -43,6 +43,35 @@ func readCsvFile(filePath string) [][]string {
 	return records
 }
 
+func parseDeviceIds(rows [][]string) []string {
+
+	var deviceIDs []string
+
+	if len(rows) == 0 {
+		log.Fatal("empty CSV")
+	}
+
+	header := rows[0]
+	var idx int = -1
+	for i, name := range header {
+		if name == "deviceId" {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		log.Fatal("deviceId column not found")
+	}
+
+	for _, row := range rows[1:] {
+		if len(row) > idx {
+			deviceIDs = append(deviceIDs, row[idx])
+		}
+	}
+
+	return deviceIDs
+}
+
 func getGCPProjectID(filePath string) string {
 	content, err := os.ReadFile(filePath)
 	if err != nil {

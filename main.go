@@ -44,7 +44,6 @@ type DeviceMigratorArgs struct {
 	skipConfig        bool
 	silentMode        bool
 	cleanupCbRegistry bool
-	startPoint        int64
 }
 
 func initMigrationFlags() {
@@ -57,13 +56,12 @@ func initMigrationFlags() {
 	flag.StringVar(&Args.cbSourceRegion, "cbSourceRegion", "", "ClearBlade Source Registry Region (Required)")
 
 	// Optional
-	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path")
+	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path. Device ids in column: deviceId")
 	flag.BoolVar(&Args.configHistory, "configHistory", true, "Store Config History. Default is true")
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
 	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
-	flag.Int64Var(&Args.startPoint, "startPoint", 0, "Index to start device migrartion on")
 
 }
 
