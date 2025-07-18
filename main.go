@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime"
 
-	//gcpiotcore "cloud.google.com/go/iot/apiv1"
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
@@ -58,7 +57,7 @@ func initMigrationFlags() {
 
 	// Optional
 	flag.StringVar(&Args.devicesCsvFile, "devicesCsv", "", "Devices CSV file path")
-	flag.BoolVar(&Args.configHistory, "configHistory", true, "Store Config History. Default is false")
+	flag.BoolVar(&Args.configHistory, "configHistory", true, "Store Config History. Default is true")
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
@@ -107,6 +106,7 @@ func main() {
 	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceCtx, sourceService)
 
 	// Validate if all required CB destination flags are provided
+	fmt.Println(string(colorGreen), "\n\u2713 Validating destination flags", string(colorReset))
 	validateCBFlags(Args.cbSourceRegion)
 
 	destinationCtx := context.Background()
@@ -142,7 +142,7 @@ func main() {
 		}
 	}
 
-	fmt.Println(string(colorGreen), "\n\n\u2713 Done!", string(colorReset))
+	fmt.Println(string(colorGreen), "\n\n\u2713 Migration complete!", string(colorReset))
 
 }
 
@@ -204,6 +204,7 @@ func validateSourceCBFlags() {
 
 func validateCBFlags(registryRegion string) {
 
+	fmt.Println(string(colorGreen), "\n\u2713 Validating service account flag", string(colorReset))
 	if Args.cbServiceAccount == "" {
 		if Args.silentMode {
 			log.Fatalln("-cbServiceAccount is a required paramter")
@@ -217,15 +218,18 @@ func validateCBFlags(registryRegion string) {
 	}
 
 	// validate that path to service account file exists
+	fmt.Println(string(colorGreen), "\n\u2713 Validating service account location", string(colorReset))
 	if _, err := os.Stat(Args.cbServiceAccount); errors.Is(err, os.ErrNotExist) {
 		log.Fatalf("Could not location service account file %s. Please make sure the path is correct\n", Args.cbServiceAccount)
 	}
 
+	fmt.Println(string(colorGreen), "\n\u2713 Setting environment variable CLEARBLADE_CONFIGURATION", string(colorReset))
 	err := os.Setenv("CLEARBLADE_CONFIGURATION", Args.cbServiceAccount)
 	if err != nil {
 		log.Fatalln("Failed to set CLEARBLADE_CONFIGURATION env variable", err.Error())
 	}
 
+	fmt.Println(string(colorGreen), "\n\u2713 Validating registry name", string(colorReset))
 	if Args.cbRegistryName == "" {
 		if Args.silentMode {
 			log.Fatalln("-cbRegistryName is required parameter")
@@ -237,6 +241,7 @@ func validateCBFlags(registryRegion string) {
 		Args.cbRegistryName = value
 	}
 
+	fmt.Println(string(colorGreen), "\n\u2713 Validating registry region", string(colorReset))
 	if Args.cbRegistryRegion == "" {
 		if Args.silentMode {
 			Args.cbRegistryRegion = Args.cbSourceRegion

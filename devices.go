@@ -51,7 +51,7 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 	deviceConfigs := make(map[string]interface{})
 	fmt.Println()
 	spinner := getSpinner("Fetching all devices from registry...")
-	req := service.List(getCBSourceRegistryPath()).PageSize(int64(10))
+	req := service.List(getCBSourceRegistryPath()).PageSize(int64(1000))
 	resp, err := req.Do()
 	if err != nil {
 		log.Fatalln("Error fetching all devices: ", err)
@@ -70,16 +70,29 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 			log.Fatalln("Error fetching all devices: ", err.Error())
 			break
 		}
+
+		fmt.Println(string(colorGreen), "\n\u2713 Next page token: ", resp.NextPageToken, string(colorReset))
 	}
+
+	fmt.Println(string(colorGreen), "\n\u2713 Done fetching devices", string(colorReset))
 
 	if err == nil {
 		devices = append(devices, resp.Devices...)
 	}
 	if Args.configHistory {
-		for _, device := range devices {
+		spinner := getSpinner("Fetching configuration history for each device...")
+
+		for ndx, device := range devices {
 			deviceConfigs[device.Id] = fetchConfigVersionHistory(device, ctx, service)
+			if ndx%100 == 0 {
+				if err := spinner.Add(1); err != nil {
+					log.Fatalln("Unable to add to spinner: ", err)
+				}
+			}
 		}
 	}
+
+	fmt.Println(string(colorGreen), "\n\u2713 Done fetching device configuration history", string(colorReset))
 	return devices, deviceConfigs
 }
 
