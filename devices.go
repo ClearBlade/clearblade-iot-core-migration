@@ -73,7 +73,11 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 			log.Fatalln("Error fetching all devices: ", err.Error())
 			break
 		}
+
+		fmt.Println(string(colorGreen), "\n\u2713 Next page token: ", resp.NextPageToken, string(colorReset))
 	}
+
+	fmt.Println(string(colorGreen), "\n\u2713 Done fetching devices", string(colorReset))
 
 	if err == nil {
 		devices = append(devices, resp.Devices...)
@@ -87,6 +91,7 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 	devices = devices[Args.startPoint:]
 
 	if Args.configHistory {
+		fmt.Println("")
 		bar := getProgressBar(len(devices), "Gathering Device Config History...")
 		wp := NewWorkerPool(TotalWorkers)
 		wp.Run()
@@ -103,8 +108,11 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 					log.Fatalln("Unable to add to progressbar:", err)
 				}
 			})
+
 		}
 	}
+
+	fmt.Println(string(colorGreen), "\n\u2713 Done fetching device configuration history", string(colorReset))
 	return devices, deviceConfigs
 }
 
@@ -180,6 +188,8 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 
 	fmt.Println()
 	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
+	wp := NewWorkerPool(TotalWorkers)
+	wp.Run()
 
 	parent := getCBRegistryPath()
 	sourceParent := getCBSourceRegistryPath()
