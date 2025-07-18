@@ -10,7 +10,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 
 	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
@@ -48,10 +50,11 @@ func fetchDevicesFromClearBladeIotCore(ctx context.Context, service *cbiotcore.S
 
 func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) ([]*cbiotcore.Device, map[string]interface{}) {
 	var devices []*cbiotcore.Device
+	configMutex := sync.Mutex{}
 	deviceConfigs := make(map[string]interface{})
 	fmt.Println()
 	spinner := getSpinner("Fetching all devices from registry...")
-	req := service.List(getCBSourceRegistryPath()).PageSize(int64(10))
+	req := service.List(getCBSourceRegistryPath()).PageSize(int64(1000))
 	resp, err := req.Do()
 	if err != nil {
 		log.Fatalln("Error fetching all devices: ", err)
@@ -75,9 +78,31 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 	if err == nil {
 		devices = append(devices, resp.Devices...)
 	}
+
+	// sort to ensure consistent read
+	sort.Slice(devices, func(i, j int) bool {
+		return devices[i].Id < devices[j].Id
+	})
+
+	devices = devices[Args.startPoint:]
+
 	if Args.configHistory {
+		bar := getProgressBar(len(devices), "Gathering Device Config History...")
+		wp := NewWorkerPool(TotalWorkers)
+		wp.Run()
+
 		for _, device := range devices {
-			deviceConfigs[device.Id] = fetchConfigVersionHistory(device, ctx, service)
+			d := device
+			wp.AddTask(func() {
+				dConfig := fetchConfigVersionHistory(d, ctx, service)
+				configMutex.Lock()
+				deviceConfigs[d.Id] = dConfig
+				configMutex.Unlock()
+
+				if err := bar.Add(1); err != nil {
+					log.Fatalln("Unable to add to progressbar:", err)
+				}
+			})
 		}
 	}
 	return devices, deviceConfigs
@@ -232,6 +257,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 }
 
 func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
+	fmt.Println("")
 	bar := getProgressBar(len(devices), "Migrating Devices and Gateways...")
 	successfulCreates := 0
 

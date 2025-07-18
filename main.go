@@ -13,7 +13,7 @@ import (
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
-const TotalWorkers = 10
+const TotalWorkers = 25
 
 var (
 	Args DeviceMigratorArgs
@@ -45,6 +45,7 @@ type DeviceMigratorArgs struct {
 	skipConfig        bool
 	silentMode        bool
 	cleanupCbRegistry bool
+	startPoint        int64
 }
 
 func initMigrationFlags() {
@@ -63,6 +64,8 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
 	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
+	flag.Int64Var(&Args.startPoint, "startPoint", 0, "Index to start device migrartion on")
+
 }
 
 func main() {
