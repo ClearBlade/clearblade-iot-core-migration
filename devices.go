@@ -81,8 +81,6 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 				log.Fatalln("Error fetching all devices: ", err.Error())
 				break
 			}
-
-			fmt.Println(string(colorGreen), "\n\u2713 Next page token: ", resp.NextPageToken, string(colorReset))
 		}
 
 		fmt.Println(string(colorGreen), "\n\u2713 Done fetching devices", string(colorReset))

@@ -39,6 +39,8 @@ Install & run the latest binary from https://github.com/ClearBlade/clearblade-io
 
 You will be prompted to enter a device's CSV file path that will be used to migrate devices specified in the CSV file. You can skip this step by pressing enter; by default, all the registry's devices will be migrated. Alternatively, you can set the `--silentMode` flag to run the tool in non-interactive mode.
 
+**Note: if providing a CSV file, the file must have column headers defined in row 1. In addition, the column specifying device IDs must have a column header of deviceId**
+
 **Note: We recommend you use Linux or Darwin binaries. It's unlikely, but something could fail during the migration. A failed_devices CSV file will be created at the end of this migration. Please submit this file to [ClearBlade Support](https://clearblade.atlassian.net/servicedesk/customer/portal/1/group/1/create/20), and we will ensure 100% success.**
 
 **Running this tool close to your ClearBlade instances (e.g., same cloud region) will improve migration speed.**

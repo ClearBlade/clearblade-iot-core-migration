@@ -29,6 +29,7 @@ func fileExists(filename string) bool {
 }
 
 func readCsvFile(filePath string) [][]string {
+	fmt.Println(string(colorGreen), "\n\u2713 Reading CSV file", string(colorReset))
 	f, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalln("Unable to read input file: ", filePath, err)
@@ -44,7 +45,7 @@ func readCsvFile(filePath string) [][]string {
 }
 
 func parseDeviceIds(rows [][]string) []string {
-
+	fmt.Println(string(colorGreen), "\n\u2713 Parsing device IDs", string(colorReset))
 	var deviceIDs []string
 
 	if len(rows) == 0 {
