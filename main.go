@@ -94,12 +94,6 @@ func main() {
 	fmt.Println(string(colorGreen), "\n\u2713 Validating source flags", string(colorReset))
 	validateSourceCBFlags()
 
-	// Validate if all required CB destination flags are provided
-	fmt.Println(string(colorGreen), "\n\u2713 Validating destination flags", string(colorReset))
-	validateCBFlags(Args.cbSourceRegion)
-
-	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
-
 	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", string(colorReset))
 
 	// Authenticate CB source and destination accounts
@@ -109,18 +103,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	fmt.Println("Args.cbSourceRegistryName")
-	fmt.Println(Args.cbSourceRegistryName)
-	fmt.Println("Args.cbSourceRegion")
-	fmt.Println(Args.cbSourceRegion)
-
 	sourceRegDetails, err := cbiotcore.GetRegistryCredentials(Args.cbSourceRegistryName, Args.cbSourceRegion, sourceService)
-
-	fmt.Println("err")
-	fmt.Println(err)
-
-	fmt.Println("sourceRegDetails")
-	fmt.Println(sourceRegDetails)
 
 	if sourceRegDetails.SystemKey == "" {
 		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
@@ -133,6 +116,12 @@ func main() {
 		fmt.Println(string(colorGreen), "\n\n\u2713 Device batches exported to csv!", string(colorReset))
 		return
 	}
+
+	// Validate if all required CB destination flags are provided
+	fmt.Println(string(colorGreen), "\n\u2713 Validating destination flags", string(colorReset))
+	validateCBFlags(Args.cbSourceRegion)
+
+	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
 
 	destinationCtx := context.Background()
 	destinationService, err := cbiotcore.NewService(destinationCtx)
