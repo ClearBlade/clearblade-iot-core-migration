@@ -276,3 +276,47 @@ func generateFailedDevicesCSV(errorLogs []ErrorLog) error {
 
 	return nil
 }
+
+func ExportDeviceBatches(devices []*cbiotcore.Device, batchSize int64) {
+
+	batches := make(map[int][]*cbiotcore.Device)
+
+	for i, device := range devices {
+		batchNumber := i / int(batchSize)
+		batches[batchNumber] = append(batches[batchNumber], device)
+	}
+
+	for i, batch := range batches {
+		WriteBatchFile(batch, fmt.Sprintf("batch_%d.csv", i))
+	}
+}
+
+func WriteBatchFile(devices []*cbiotcore.Device, filename string) {
+	currDir, err := os.Getwd()
+	if err != nil {
+		log.Fatalln("Could not get current wd: ", err)
+	}
+
+	failedDevicesFile := fmt.Sprint(currDir, "/", filename)
+
+	if runtime.GOOS == "windows" {
+		failedDevicesFile = fmt.Sprint(currDir, "\\", filename)
+	}
+
+	f, err := os.OpenFile(failedDevicesFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalln("Could not open file: ", err)
+	}
+	defer f.Close()
+
+	fileContents := "deviceId\n"
+	for _, device := range devices {
+		fileContents += device.Id
+		fileContents += "\n"
+	}
+
+	if _, err := f.WriteString(fileContents); err != nil {
+		log.Fatalln("Could not write to file: ", err)
+	}
+
+}

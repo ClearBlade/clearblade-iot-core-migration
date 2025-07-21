@@ -44,6 +44,7 @@ type DeviceMigratorArgs struct {
 	skipConfig        bool
 	silentMode        bool
 	cleanupCbRegistry bool
+	exportBatchSize   int64
 }
 
 func initMigrationFlags() {
@@ -62,6 +63,7 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
 	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
+	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of csvs")
 
 }
 
@@ -125,6 +127,12 @@ func main() {
 		os.Exit(0)
 	}
 	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceCtx, sourceService)
+
+	if Args.exportBatchSize != 0 {
+		ExportDeviceBatches(devices, Args.exportBatchSize)
+		fmt.Println(string(colorGreen), "\n\n\u2713 Device batches exported to csv!", string(colorReset))
+		return
+	}
 
 	destinationCtx := context.Background()
 	destinationService, err := cbiotcore.NewService(destinationCtx)
