@@ -24,6 +24,7 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Skip Migrating Latest Config            | `skipConfig`         | `false`               | `No`   |
 | Non-Interactive (silent) Mode           | `silentMode`         | `false`               | `No`   |
 | Cleanup existing CB registry            | `cleanupCbRegistry`  | `false`               | `No`   |
+| Instead of migrating devices, export device ids to file          | `exportBatchSize`  | N/A               | `No`   |
 
 ## Setup
 
