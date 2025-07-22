@@ -29,7 +29,7 @@ func fileExists(filename string) bool {
 }
 
 func readCsvFile(filePath string) [][]string {
-	fmt.Println(string(colorGreen), "\n\u2713 Reading CSV file", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Reading CSV file", colorReset)
 	f, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalln("Unable to read input file: ", filePath, err)
@@ -45,7 +45,7 @@ func readCsvFile(filePath string) [][]string {
 }
 
 func parseDeviceIds(rows [][]string) []string {
-	fmt.Println(string(colorGreen), "\n\u2713 Parsing device IDs", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Parsing device IDs", colorReset)
 	var deviceIDs []string
 
 	if len(rows) == 0 {
@@ -53,7 +53,7 @@ func parseDeviceIds(rows [][]string) []string {
 	}
 
 	header := rows[0]
-	var idx int = -1
+	idx := -1
 	for i, name := range header {
 		if name == "deviceId" {
 			idx = i
@@ -140,7 +140,7 @@ func readInput(msg string) (string, error) {
 }
 
 func getProgressBar(total int, description string) *progressbar.ProgressBar {
-	description = string(colorYellow) + description + string(colorReset)
+	description = colorYellow + description + colorReset
 	bar := progressbar.NewOptions(total,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
@@ -159,7 +159,7 @@ func getProgressBar(total int, description string) *progressbar.ProgressBar {
 }
 
 func getSpinner(description string) *progressbar.ProgressBar {
-	description = string(colorYellow) + description + string(colorReset)
+	description = colorYellow + description + colorReset
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionSetWidth(30),

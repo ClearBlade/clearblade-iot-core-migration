@@ -64,7 +64,6 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
 	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
 	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of csvs")
-
 }
 
 func main() {
@@ -91,10 +90,10 @@ func main() {
 	}
 
 	// Validate if all required CB source flags are provided
-	fmt.Println(string(colorGreen), "\n\u2713 Validating source flags", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Validating source flags", colorReset)
 	validateSourceCBFlags()
 
-	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", string(colorReset))
+	fmt.Println(colorCyan, "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", colorReset)
 
 	// Authenticate CB source and destination accounts
 	sourceCtx := context.Background()
@@ -104,24 +103,27 @@ func main() {
 	}
 
 	sourceRegDetails, err := cbiotcore.GetRegistryCredentials(Args.cbSourceRegistryName, Args.cbSourceRegion, sourceService)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	if sourceRegDetails.SystemKey == "" {
-		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
+		fmt.Println(colorRed, "\n\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
 		os.Exit(0)
 	}
 	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceCtx, sourceService)
 
 	if Args.exportBatchSize != 0 {
 		ExportDeviceBatches(devices, Args.exportBatchSize)
-		fmt.Println(string(colorGreen), "\n\n\u2713 Device batches exported to csv!", string(colorReset))
+		fmt.Println(colorGreen, "\n\n\u2713 Device batches exported to csv!", colorReset)
 		return
 	}
 
 	// Validate if all required CB destination flags are provided
-	fmt.Println(string(colorGreen), "\n\u2713 Validating destination flags", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Validating destination flags", colorReset)
 	validateCBFlags(Args.cbSourceRegion)
 
-	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 All Flags validated!", colorReset)
 
 	destinationCtx := context.Background()
 	destinationService, err := cbiotcore.NewService(destinationCtx)
@@ -131,7 +133,7 @@ func main() {
 
 	regDetails, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, destinationService)
 	if regDetails.SystemKey == "" {
-		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade destination registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
+		fmt.Println(colorRed, "\n\u2715 Unable to fetch ClearBlade destination registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
 		os.Exit(0)
 	}
 
@@ -140,7 +142,7 @@ func main() {
 
 	if Args.cleanupCbRegistry {
 		deleteAllFromCbRegistry(destinationService)
-		fmt.Println(string(colorGreen), "\n\n\u2713 Successfully Cleaned up destination ClearBlade registry!\n", string(colorReset))
+		fmt.Println(colorGreen, "\n\n\u2713 Successfully Cleaned up destination ClearBlade registry!\n", colorReset)
 	}
 
 	// Add fetched devices to ClearBlade Device table
@@ -154,7 +156,7 @@ func main() {
 		}
 	}
 
-	fmt.Println(string(colorGreen), "\n\n\u2713 Migration complete!", string(colorReset))
+	fmt.Println(colorGreen, "\n\n\u2713 Migration complete!", colorReset)
 
 }
 
@@ -216,10 +218,10 @@ func validateSourceCBFlags() {
 
 func validateCBFlags(registryRegion string) {
 
-	fmt.Println(string(colorGreen), "\n\u2713 Validating service account flag", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Validating service account flag", colorReset)
 	if Args.cbServiceAccount == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbServiceAccount is a required paramter")
+			log.Fatalln("-cbServiceAccount is a required parameter")
 		}
 
 		value, err := readInput("Enter path to ClearBlade service account file. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project for more info: ")
@@ -230,18 +232,18 @@ func validateCBFlags(registryRegion string) {
 	}
 
 	// validate that path to service account file exists
-	fmt.Println(string(colorGreen), "\n\u2713 Validating service account location", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Validating service account location", colorReset)
 	if _, err := os.Stat(Args.cbServiceAccount); errors.Is(err, os.ErrNotExist) {
 		log.Fatalf("Could not location service account file %s. Please make sure the path is correct\n", Args.cbServiceAccount)
 	}
 
-	fmt.Println(string(colorGreen), "\n\u2713 Setting environment variable CLEARBLADE_CONFIGURATION", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Setting environment variable CLEARBLADE_CONFIGURATION", colorReset)
 	err := os.Setenv("CLEARBLADE_CONFIGURATION", Args.cbServiceAccount)
 	if err != nil {
 		log.Fatalln("Failed to set CLEARBLADE_CONFIGURATION env variable", err.Error())
 	}
 
-	fmt.Println(string(colorGreen), "\n\u2713 Validating registry name", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Validating registry name", colorReset)
 	if Args.cbRegistryName == "" {
 		if Args.silentMode {
 			log.Fatalln("-cbRegistryName is required parameter")
@@ -253,7 +255,7 @@ func validateCBFlags(registryRegion string) {
 		Args.cbRegistryName = value
 	}
 
-	fmt.Println(string(colorGreen), "\n\u2713 Validating registry region", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Validating registry region", colorReset)
 	if Args.cbRegistryRegion == "" {
 		if Args.silentMode {
 			Args.cbRegistryRegion = Args.cbSourceRegion
@@ -269,7 +271,5 @@ func validateCBFlags(registryRegion string) {
 		} else {
 			Args.cbRegistryRegion = value
 		}
-
 	}
-
 }

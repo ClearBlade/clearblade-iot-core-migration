@@ -1,0 +1,82 @@
+version: "2"
+linters:
+  disable:
+    - unused
+  enable:
+    - misspell
+    - unconvert
+    - unparam
+  settings:
+    gocritic:
+      disabled-checks:
+        - commentFormatting
+        - unnamedResult
+      enabled-tags:
+        - diagnostic
+        - experimental
+        - opinionated
+        - performance
+        - style
+    misspell:
+      ignore-rules:
+        - eles
+        - alledges
+    staticcheck:
+      checks:
+        - -SA1019
+        - -SA5008
+        - all
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - path: (.+)\.go$
+        text: 'printf: non-constant format string in call'
+      - path: (.+)\.go$
+        text: printf-style function with dynamic format string and no further arguments should use print-style function instead
+      - linters:
+          - staticcheck
+        text: "ST1005:" # Exclude errors must start with capital letter
+      - linters:
+          - staticcheck
+        text: "ST1003:" # Exclude variable naming rules
+      - linters:
+          - staticcheck
+        text: "SA5008: unknown JSON option \"remain\""
+      - linters:
+          - staticcheck
+        text: "SA5008: unknown JSON option \"flatten\""
+      - linters:
+          - staticcheck
+        text: "ST1006:" # Exclude receiver should be omitted instead of _
+      - linters:
+          - staticcheck
+        text: "ST1012:" # Exclude error name must be of form ErrFoo
+      - linters:
+          - staticcheck
+        text: "QF1008:" # Exclude could remove embedded field from selector
+      - linters:
+          - staticcheck
+        text: "QF1005:" # Exclude could expand call to math.Pow
+
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+run:
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

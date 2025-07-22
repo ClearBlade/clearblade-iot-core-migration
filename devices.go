@@ -83,7 +83,7 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 			}
 		}
 
-		fmt.Println(string(colorGreen), "\n\u2713 Done fetching devices", string(colorReset))
+		fmt.Println(colorGreen, "\n\u2713 Done fetching devices", colorReset)
 
 		if err == nil {
 			devices = append(devices, resp.Devices...)
@@ -112,7 +112,7 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 		}
 
 		wp.Wait()
-		fmt.Println(string(colorGreen), "\n\u2713 Done fetching device configuration history", string(colorReset))
+		fmt.Println(colorGreen, "\n\u2713 Done fetching device configuration history", colorReset)
 
 	}
 	return devices, deviceConfigs
@@ -283,7 +283,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 
 	}
 	wp.Wait()
-	fmt.Println(string(colorGreen), "\n\u2713 Done migrating bound devices for gateways", string(colorReset))
+	fmt.Println(colorGreen, "\n\u2713 Done migrating bound devices for gateways", colorReset)
 
 }
 
@@ -359,14 +359,14 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	if len(deviceConfigs) != 0 {
 		err := updateConfigHistory(service, deviceConfigs)
 		if err != nil {
-			fmt.Println(string(colorRed), "\n\n\u2715 Unable to update config version history! Reason: ", err, string(colorReset))
+			fmt.Println(colorRed, "\n\n\u2715 Unable to update config version history! Reason: ", err, colorReset)
 		}
 	}
 
 	if successfulCreates == len(devices) {
-		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", successfulCreates, "/", len(devices), "devices and gateways!", string(colorReset))
+		fmt.Println(colorGreen, "\n\n\u2713 Migrated", successfulCreates, "/", len(devices), "devices and gateways!", colorReset)
 	} else {
-		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", successfulCreates, "/", len(devices), "devices!", string(colorReset))
+		fmt.Println(colorRed, "\n\n\u2715 Failed to migrate all devices. Migrated", successfulCreates, "/", len(devices), "devices!", colorReset)
 	}
 
 	return errorLogs
@@ -424,10 +424,10 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]in
 
 	url := creds.Url + "/api/v/1/code/" + creds.SystemKey + "/devicesConfigHistoryUpdate"
 	req, err := http.NewRequest("POST", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", creds.Token)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("ClearBlade-UserToken", creds.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -446,7 +446,6 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]in
 	var jsonMap map[string]interface{}
 
 	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
-		// log.Fatalln("Unable to unmarshall JSON: ", err)
 		return errors.New(jsonStr)
 	}
 
