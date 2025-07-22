@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -16,13 +15,13 @@ import (
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
-func fetchDevicesFromClearBladeIotCore(ctx context.Context, service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
+func fetchDevicesFromClearBladeIotCore(service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 	csvDevices := []*cbiotcore.Device{}
 	if Args.devicesCsvFile != "" {
 		csvDevices = fetchDevicesFromCSV(deviceService, Args.devicesCsvFile)
 	}
-	return fetchAllDevicesFromClearBlade(ctx, deviceService, csvDevices)
+	return fetchAllDevicesFromClearBlade(deviceService, csvDevices)
 }
 
 func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesService, csvFile string) []*cbiotcore.Device {
@@ -52,7 +51,7 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 	return devices
 }
 
-func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService, csvDevices []*cbiotcore.Device) ([]*cbiotcore.Device, map[string]interface{}) {
+func fetchAllDevicesFromClearBlade(service *cbiotcore.ProjectsLocationsRegistriesDevicesService, csvDevices []*cbiotcore.Device) ([]*cbiotcore.Device, map[string]interface{}) {
 	var devices []*cbiotcore.Device
 	configMutex := sync.Mutex{}
 	deviceConfigs := make(map[string]interface{})
@@ -93,7 +92,7 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 		for _, device := range devices {
 			d := device
 			wp.AddTask(func() {
-				dConfig := fetchConfigVersionHistory(d, ctx, service)
+				dConfig := fetchConfigVersionHistory(d, service)
 				configMutex.Lock()
 				deviceConfigs[d.Id] = dConfig
 				configMutex.Unlock()
@@ -110,7 +109,7 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 	return devices, deviceConfigs
 }
 
-func fetchConfigVersionHistory(device *cbiotcore.Device, _ context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
+func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
 	req := service.ConfigVersions.List(getCBSourceDevicePath(device.Id))
 	resp, err := req.Do()
 	if err != nil {

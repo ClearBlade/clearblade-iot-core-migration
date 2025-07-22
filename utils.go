@@ -27,6 +27,16 @@ var (
 	colorRed    = "\033[31m"
 )
 
+func init() {
+	if runtime.GOOS == "windows" {
+		colorCyan = ""
+		colorReset = ""
+		colorGreen = ""
+		colorYellow = ""
+		colorRed = ""
+	}
+}
+
 func printfColored(color, format string, args ...interface{}) {
 	if len(format) == 0 {
 		return
