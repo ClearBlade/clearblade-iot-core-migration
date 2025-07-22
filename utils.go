@@ -19,6 +19,24 @@ import (
 	"github.com/schollz/progressbar/v3"
 )
 
+var (
+	colorCyan   = "\033[36m"
+	colorReset  = "\033[0m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
+)
+
+func printfColored(color, format string, args ...interface{}) {
+	if len(format) == 0 {
+		return
+	}
+	if format[len(format)-1] != '\n' {
+		format += "\n"
+	}
+	fmt.Printf(color+format+colorReset, args...)
+}
+
 func fileExists(filename string) bool {
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
 		fmt.Println("File path does not exists: ", filename, "Error: ", err)
@@ -29,7 +47,7 @@ func fileExists(filename string) bool {
 }
 
 func readCsvFile(filePath string) [][]string {
-	fmt.Println(colorGreen, "\n\u2713 Reading CSV file", colorReset)
+	printfColored(colorGreen, "\u2713 Reading CSV file")
 	f, err := os.Open(filePath)
 	if err != nil {
 		log.Fatalln("Unable to read input file: ", filePath, err)
@@ -45,7 +63,7 @@ func readCsvFile(filePath string) [][]string {
 }
 
 func parseDeviceIds(rows [][]string) []string {
-	fmt.Println(colorGreen, "\n\u2713 Parsing device IDs", colorReset)
+	printfColored(colorGreen, "\u2713 Parsing device IDs")
 	var deviceIDs []string
 
 	if len(rows) == 0 {

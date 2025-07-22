@@ -18,14 +18,6 @@ var (
 	Args DeviceMigratorArgs
 )
 
-var (
-	colorCyan   = "\033[36m"
-	colorReset  = "\033[0m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorRed    = "\033[31m"
-)
-
 type DeviceMigratorArgs struct {
 	// ClearBlade destination specific flags
 	cbServiceAccount string
@@ -67,7 +59,6 @@ func initMigrationFlags() {
 }
 
 func main() {
-
 	// Init & Parse migration Flags
 	initMigrationFlags()
 	flag.Parse()
@@ -77,7 +68,7 @@ func main() {
 	}
 
 	if os.Args[1] == "version" {
-		fmt.Printf("%s\n", cbIotCoreMigrationVersion)
+		fmt.Println(cbIotCoreMigrationVersion)
 		os.Exit(0)
 	}
 
@@ -90,10 +81,10 @@ func main() {
 	}
 
 	// Validate if all required CB source flags are provided
-	fmt.Println(colorGreen, "\n\u2713 Validating source flags", colorReset)
+	printfColored(colorGreen, "\u2713 Validating source flags")
 	validateSourceCBFlags()
 
-	fmt.Println(colorCyan, "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", colorReset)
+	printfColored(colorCyan, "================= Starting Device Migration =================\nRunning Version: %s\n", cbIotCoreMigrationVersion)
 
 	// Authenticate CB source and destination accounts
 	sourceCtx := context.Background()
@@ -108,22 +99,22 @@ func main() {
 	}
 
 	if sourceRegDetails.SystemKey == "" {
-		fmt.Println(colorRed, "\n\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
+		printfColored(colorRed, "\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
 		os.Exit(0)
 	}
 	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceCtx, sourceService)
 
 	if Args.exportBatchSize != 0 {
 		ExportDeviceBatches(devices, Args.exportBatchSize)
-		fmt.Println(colorGreen, "\n\n\u2713 Device batches exported to csv!", colorReset)
+		printfColored(colorGreen, "\u2713 Device batches exported to csv!")
 		return
 	}
 
 	// Validate if all required CB destination flags are provided
-	fmt.Println(colorGreen, "\n\u2713 Validating destination flags", colorReset)
+	printfColored(colorGreen, "\u2713 Validating destination flags")
 	validateCBFlags(Args.cbSourceRegion)
 
-	fmt.Println(colorGreen, "\n\u2713 All Flags validated!", colorReset)
+	printfColored(colorGreen, "\u2713 All Flags validated!")
 
 	destinationCtx := context.Background()
 	destinationService, err := cbiotcore.NewService(destinationCtx)
@@ -133,7 +124,7 @@ func main() {
 
 	regDetails, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, destinationService)
 	if regDetails.SystemKey == "" {
-		fmt.Println(colorRed, "\n\u2715 Unable to fetch ClearBlade destination registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
+		printfColored(colorRed, "\u2715 Unable to fetch ClearBlade destination registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
 		os.Exit(0)
 	}
 
@@ -142,7 +133,7 @@ func main() {
 
 	if Args.cleanupCbRegistry {
 		deleteAllFromCbRegistry(destinationService)
-		fmt.Println(colorGreen, "\n\n\u2713 Successfully Cleaned up destination ClearBlade registry!\n", colorReset)
+		printfColored(colorGreen, "\u2713 Successfully Cleaned up destination ClearBlade registry!")
 	}
 
 	// Add fetched devices to ClearBlade Device table
@@ -156,7 +147,7 @@ func main() {
 		}
 	}
 
-	fmt.Println(colorGreen, "\n\n\u2713 Migration complete!", colorReset)
+	printfColored(colorGreen, "\u2713 Migration complete!")
 
 }
 
@@ -174,7 +165,7 @@ func validateSourceCBFlags() {
 
 	// validate that path to service account file exists
 	if _, err := os.Stat(Args.cbSourceServiceAccount); errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("Could not location service account file %s. Please make sure the path is correct\n", Args.cbSourceServiceAccount)
+		log.Fatalf("Could not location service account file %s. Please make sure the path is correct", Args.cbSourceServiceAccount)
 	}
 
 	err := os.Setenv("CLEARBLADE_CONFIGURATION", Args.cbSourceServiceAccount)
@@ -218,7 +209,7 @@ func validateSourceCBFlags() {
 
 func validateCBFlags(registryRegion string) {
 
-	fmt.Println(colorGreen, "\n\u2713 Validating service account flag", colorReset)
+	printfColored(colorGreen, "\u2713 Validating service account flag")
 	if Args.cbServiceAccount == "" {
 		if Args.silentMode {
 			log.Fatalln("-cbServiceAccount is a required parameter")
@@ -232,18 +223,18 @@ func validateCBFlags(registryRegion string) {
 	}
 
 	// validate that path to service account file exists
-	fmt.Println(colorGreen, "\n\u2713 Validating service account location", colorReset)
+	printfColored(colorGreen, "\u2713 Validating service account location")
 	if _, err := os.Stat(Args.cbServiceAccount); errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("Could not location service account file %s. Please make sure the path is correct\n", Args.cbServiceAccount)
+		log.Fatalf("Could not location service account file %s. Please make sure the path is correct", Args.cbServiceAccount)
 	}
 
-	fmt.Println(colorGreen, "\n\u2713 Setting environment variable CLEARBLADE_CONFIGURATION", colorReset)
+	printfColored(colorGreen, "\u2713 Setting environment variable CLEARBLADE_CONFIGURATION")
 	err := os.Setenv("CLEARBLADE_CONFIGURATION", Args.cbServiceAccount)
 	if err != nil {
 		log.Fatalln("Failed to set CLEARBLADE_CONFIGURATION env variable", err.Error())
 	}
 
-	fmt.Println(colorGreen, "\n\u2713 Validating registry name", colorReset)
+	printfColored(colorGreen, "\u2713 Validating registry name")
 	if Args.cbRegistryName == "" {
 		if Args.silentMode {
 			log.Fatalln("-cbRegistryName is required parameter")
@@ -255,7 +246,7 @@ func validateCBFlags(registryRegion string) {
 		Args.cbRegistryName = value
 	}
 
-	fmt.Println(colorGreen, "\n\u2713 Validating registry region", colorReset)
+	printfColored(colorGreen, "\u2713 Validating registry region")
 	if Args.cbRegistryRegion == "" {
 		if Args.silentMode {
 			Args.cbRegistryRegion = Args.cbSourceRegion

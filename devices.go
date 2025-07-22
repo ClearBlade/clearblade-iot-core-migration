@@ -79,15 +79,10 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 
 			if err != nil {
 				log.Fatalln("Error fetching all devices: ", err.Error())
-				break
 			}
 		}
 
-		fmt.Println(colorGreen, "\n\u2713 Done fetching devices", colorReset)
-
-		if err == nil {
-			devices = append(devices, resp.Devices...)
-		}
+		printfColored(colorGreen, "\u2713 Done fetching devices")
 	}
 
 	if Args.configHistory {
@@ -112,8 +107,7 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 		}
 
 		wp.Wait()
-		fmt.Println(colorGreen, "\n\u2713 Done fetching device configuration history", colorReset)
-
+		printfColored(colorGreen, "\u2713 Done fetching device configuration history")
 	}
 	return devices, deviceConfigs
 }
@@ -283,7 +277,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 
 	}
 	wp.Wait()
-	fmt.Println(colorGreen, "\n\u2713 Done migrating bound devices for gateways", colorReset)
+	printfColored(colorGreen, "\u2713 Done migrating bound devices for gateways")
 
 }
 
@@ -359,14 +353,14 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	if len(deviceConfigs) != 0 {
 		err := updateConfigHistory(service, deviceConfigs)
 		if err != nil {
-			fmt.Println(colorRed, "\n\n\u2715 Unable to update config version history! Reason: ", err, colorReset)
+			printfColored(colorRed, "\u2715 Unable to update config version history! Reason: %v", err)
 		}
 	}
 
 	if successfulCreates == len(devices) {
-		fmt.Println(colorGreen, "\n\n\u2713 Migrated", successfulCreates, "/", len(devices), "devices and gateways!", colorReset)
+		printfColored(colorGreen, "\u2713 Migrated %d/%d devices and gateways!", successfulCreates, len(devices))
 	} else {
-		fmt.Println(colorRed, "\n\n\u2715 Failed to migrate all devices. Migrated", successfulCreates, "/", len(devices), "devices!", colorReset)
+		printfColored(colorRed, "\u2715 Failed to migrate all devices. Migrated %d/%d devices!", successfulCreates, len(devices))
 	}
 
 	return errorLogs
