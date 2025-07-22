@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 
-	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
@@ -103,29 +102,12 @@ func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.Proje
 					log.Fatalln("Unable to add to progressbar:", err)
 				}
 			})
-
 		}
 
 		wp.Wait()
 		printfColored(colorGreen, "\u2713 Done fetching device configuration history")
 	}
 	return devices, deviceConfigs
-}
-
-func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []string {
-	missingDeviceIds := make([]string, 0)
-	for _, id := range deviceIds {
-		found := false
-		for _, device := range devices {
-			if device.Id == id {
-				found = true
-			}
-		}
-		if !found {
-			missingDeviceIds = append(missingDeviceIds, id)
-		}
-	}
-	return missingDeviceIds
 }
 
 func fetchConfigVersionHistory(device *cbiotcore.Device, _ context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
@@ -144,7 +126,6 @@ func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDevi
 	// if gateway exists and bound devices present -> unbind all devices & delete gateway
 
 	boundDevices, err := cbDeviceService.List(parent).GatewayListOptionsAssociationsGatewayId(gateway).Do()
-
 	if err != nil {
 		log.Fatalln("Unable to fetch boundDevices for existing gateways from CB registry: ", err.Error())
 	}
@@ -367,7 +348,6 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 }
 
 func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) error {
-
 	patchCall := deviceService.Patch(getCBDevicePath(device.Id), transform(device))
 
 	if Args.updatePublicKeys {
@@ -377,7 +357,6 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	}
 
 	_, err := patchCall.Do()
-
 	if err != nil {
 		return err
 	}
@@ -390,7 +369,6 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 
 		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBDevicePath(device.Id), config)
 		_, err := updateConfigCall.Do()
-
 		if err != nil {
 			return err
 		}
@@ -399,7 +377,6 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	}
 
 	return nil
-
 }
 
 func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) (*cbiotcore.Device, error) {
@@ -409,7 +386,6 @@ func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 }
 
 func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
-
 	creds, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
 
 	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}

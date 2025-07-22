@@ -12,7 +12,10 @@ import (
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
-const TotalWorkers = 25
+const (
+	cbIotCoreMigrationVersion = "v1.6.0"
+	TotalWorkers              = 25
+)
 
 var (
 	Args DeviceMigratorArgs
@@ -40,10 +43,12 @@ type DeviceMigratorArgs struct {
 }
 
 func initMigrationFlags() {
+	// Destination
 	flag.StringVar(&Args.cbServiceAccount, "cbServiceAccount", "", "Path to a ClearBlade service account file for the destination registry. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
 	flag.StringVar(&Args.cbRegistryName, "cbRegistryName", "", "ClearBlade Destination Registry Name (Required)")
 	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Destination Registry Region (Required)")
 
+	// Source
 	flag.StringVar(&Args.cbSourceServiceAccount, "cbSourceServiceAccount", "", "Path to a ClearBlade service account file for the source registry. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
 	flag.StringVar(&Args.cbSourceRegistryName, "cbSourceRegistryName", "", "ClearBlade Source Registry Name (Required)")
 	flag.StringVar(&Args.cbSourceRegion, "cbSourceRegion", "", "ClearBlade Source Registry Region (Required)")
@@ -55,14 +60,12 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
 	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
-	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of csvs")
+	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of CSVs")
+
+	flag.Parse()
 }
 
 func main() {
-	// Init & Parse migration Flags
-	initMigrationFlags()
-	flag.Parse()
-
 	if len(os.Args) == 1 {
 		log.Fatalln("No flags supplied. Use clearblade-iot-core-migration --help to view details.")
 	}
@@ -71,6 +74,8 @@ func main() {
 		fmt.Println(cbIotCoreMigrationVersion)
 		os.Exit(0)
 	}
+
+	initMigrationFlags()
 
 	if runtime.GOOS == "windows" {
 		colorCyan = ""
@@ -148,7 +153,6 @@ func main() {
 	}
 
 	printfColored(colorGreen, "\u2713 Migration complete!")
-
 }
 
 func validateSourceCBFlags() {
@@ -208,7 +212,6 @@ func validateSourceCBFlags() {
 }
 
 func validateCBFlags(registryRegion string) {
-
 	printfColored(colorGreen, "\u2713 Validating service account flag")
 	if Args.cbServiceAccount == "" {
 		if Args.silentMode {
@@ -250,7 +253,6 @@ func validateCBFlags(registryRegion string) {
 	if Args.cbRegistryRegion == "" {
 		if Args.silentMode {
 			Args.cbRegistryRegion = Args.cbSourceRegion
-			// log.Fatalln("-cbRegistryRegion is required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Registry Region (Press enter to skip if you are migrating to the same region): ")
 		if err != nil {

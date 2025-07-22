@@ -37,15 +37,6 @@ func printfColored(color, format string, args ...interface{}) {
 	fmt.Printf(color+format+colorReset, args...)
 }
 
-func fileExists(filename string) bool {
-	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
-		fmt.Println("File path does not exists: ", filename, "Error: ", err)
-		return false
-	}
-
-	return true
-}
-
 func readCsvFile(filePath string) [][]string {
 	printfColored(colorGreen, "\u2713 Reading CSV file")
 	f, err := os.Open(filePath)
@@ -89,21 +80,6 @@ func parseDeviceIds(rows [][]string) []string {
 	}
 
 	return deviceIDs
-}
-
-func getGCPProjectID(filePath string) string {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Fatalln("Error when opening json file: ", err)
-	}
-
-	var payload GCPConfig
-	err = json.Unmarshal(content, &payload)
-	if err != nil {
-		log.Fatalln("Error during Unmarshal(): ", err)
-	}
-
-	return payload.Project_id
 }
 
 func getCBProjectID(filePath string) string {
@@ -150,7 +126,7 @@ func readInput(msg string) (string, error) {
 		return "", err
 	}
 
-	// remove the delimeter from the string
+	// remove the delimiter from the string
 	input = strings.TrimSuffix(input, "\n")
 	input = strings.TrimSuffix(input, "\r")
 
@@ -207,7 +183,6 @@ func getAbsPath(path string) (string, error) {
 }
 
 func transform(device *cbiotcore.Device) *cbiotcore.Device {
-
 	parsedCreds := make([]*cbiotcore.DeviceCredential, 0)
 	if Args.updatePublicKeys {
 		for _, creds := range device.Credentials {
@@ -252,13 +227,6 @@ func transform(device *cbiotcore.Device) *cbiotcore.Device {
 	return cbDevice
 }
 
-func getTimeString(timestamp time.Time) string {
-	if timestamp.Unix() == 0 {
-		return ""
-	}
-	return timestamp.Format(time.RFC3339)
-}
-
 func generateFailedDevicesCSV(errorLogs []ErrorLog) error {
 	currDir, err := os.Getwd()
 	if err != nil {
@@ -296,7 +264,6 @@ func generateFailedDevicesCSV(errorLogs []ErrorLog) error {
 }
 
 func ExportDeviceBatches(devices []*cbiotcore.Device, batchSize int64) {
-
 	batches := make(map[int][]*cbiotcore.Device)
 
 	for i, device := range devices {
@@ -336,5 +303,4 @@ func WriteBatchFile(devices []*cbiotcore.Device, filename string) {
 	if _, err := f.WriteString(fileContents); err != nil {
 		log.Fatalln("Could not write to file: ", err)
 	}
-
 }
