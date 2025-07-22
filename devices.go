@@ -98,7 +98,7 @@ func fetchAllDevicesFromClearBlade(service *cbiotcore.ProjectsLocationsRegistrie
 				configMutex.Unlock()
 
 				if err := bar.Add(1); err != nil {
-					log.Fatalln("Unable to add to progressbar:", err)
+					log.Fatalln("Unable to add to progress bar: ", err)
 				}
 			})
 		}
@@ -113,14 +113,14 @@ func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.Proj
 	req := service.ConfigVersions.List(getCBSourceDevicePath(device.Id))
 	resp, err := req.Do()
 	if err != nil {
-		log.Fatalln("fetchConfigVersionHistory ERROR: ", err)
+		log.Fatalln("Error fetching config version history: ", err)
 	}
 	return resp.DeviceConfigs
 }
 
 func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDeviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, cbRegistryService *cbiotcore.ProjectsLocationsRegistriesService) {
 	// fetch bound devices
-	// if gateway doesn't exists -> do error checking and return
+	// if gateway doesn't exist -> do error checking and return
 	// if gateway exists, but no bound devices -> do check and return
 	// if gateway exists and bound devices present -> unbind all devices & delete gateway
 
@@ -140,7 +140,7 @@ func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDevi
 		}).Do()
 
 		if err != nil {
-			fmt.Printf("Unable to unbind device %s from gateway %s. Reason: %s", boundDevices.Devices[i].Id, gateway, err.Error())
+			fmt.Printf("Unable to unbind device %s from gateway %s. Reason: %s\n", boundDevices.Devices[i].Id, gateway, err.Error())
 		}
 	}
 }
@@ -175,7 +175,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 
 		wp.AddTask(func() {
 			if barErr := bar.Add(1); barErr != nil {
-				log.Fatalln("Unable to add to progressbar: ", barErr)
+				log.Fatalln("Unable to add to progress bar: ", barErr)
 			}
 
 			// First unbind any existing devices from the target gateway
@@ -276,7 +276,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	for i := 0; i < len(devices); i++ {
 		idx := i
 		if barErr := bar.Add(1); barErr != nil {
-			log.Fatalln("Unable to add to progressbar: ", barErr)
+			log.Fatalln("Unable to add to progress bar: ", barErr)
 		}
 		wp.AddTask(func() {
 			resp, err := createDevice(deviceService, devices[idx])

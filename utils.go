@@ -68,7 +68,7 @@ func parseDeviceIds(rows [][]string) []string {
 	var deviceIDs []string
 
 	if len(rows) == 0 {
-		log.Fatal("empty CSV")
+		log.Fatal("empty CSV file")
 	}
 
 	header := rows[0]

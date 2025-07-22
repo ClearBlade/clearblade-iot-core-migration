@@ -67,7 +67,7 @@ func initMigrationFlags() {
 func validateSourceCBFlags() {
 	if Args.cbSourceServiceAccount == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbSourceServiceAccount is required parameter")
+			log.Fatalln("-cbSourceServiceAccount is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Source Service Account File path (.json): ")
 		if err != nil {
@@ -78,12 +78,12 @@ func validateSourceCBFlags() {
 
 	// validate that path to service account file exists
 	if _, err := os.Stat(Args.cbSourceServiceAccount); errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("Could not location service account file %s. Please make sure the path is correct", Args.cbSourceServiceAccount)
+		log.Fatalf("Could not locate service account file %s. Please make sure the path is correct", Args.cbSourceServiceAccount)
 	}
 
 	if Args.cbSourceRegistryName == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbSourceRegistryName is required parameter")
+			log.Fatalln("-cbSourceRegistryName is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Source Registry Name: ")
 		if err != nil {
@@ -94,7 +94,7 @@ func validateSourceCBFlags() {
 
 	if Args.cbSourceRegion == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbSourceRegion is required parameter")
+			log.Fatalln("-cbSourceRegion is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Source Registry Region: ")
 		if err != nil {
@@ -132,13 +132,13 @@ func validateCBFlags(registryRegion string) {
 	// validate that path to service account file exists
 	printfColored(colorGreen, "\u2713 Validating service account location")
 	if _, err := os.Stat(Args.cbServiceAccount); errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("Could not location service account file %s. Please make sure the path is correct", Args.cbServiceAccount)
+		log.Fatalf("Could not locate service account file %s. Please make sure the path is correct", Args.cbServiceAccount)
 	}
 
 	printfColored(colorGreen, "\u2713 Validating registry name")
 	if Args.cbRegistryName == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbRegistryName is required parameter")
+			log.Fatalln("-cbRegistryName is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Registry Name: ")
 		if err != nil {
