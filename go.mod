@@ -1,6 +1,6 @@
 module clearblade-iot-core-migration
 
-go 1.18
+go 1.24
 
 require (
 	cloud.google.com/go/iot v1.4.0

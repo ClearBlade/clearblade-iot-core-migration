@@ -55,7 +55,6 @@ func fetchAllDevicesFromClearBlade(service *cbiotcore.ProjectsLocationsRegistrie
 	var devices []*cbiotcore.Device
 	configMutex := sync.Mutex{}
 	deviceConfigs := make(map[string]interface{})
-	fmt.Println()
 	if len(csvDevices) != 0 {
 		devices = csvDevices
 	} else {
@@ -84,7 +83,6 @@ func fetchAllDevicesFromClearBlade(service *cbiotcore.ProjectsLocationsRegistrie
 	}
 
 	if Args.configHistory {
-		fmt.Println("")
 		bar := getProgressBar(len(devices), "Gathering Device Config History...")
 		wp := NewWorkerPool(TotalWorkers)
 		wp.Run()
@@ -164,7 +162,6 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 		return
 	}
 
-	fmt.Println()
 	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
 	wp := NewWorkerPool(TotalWorkers)
 	wp.Run()
@@ -262,7 +259,6 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 }
 
 func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
-	fmt.Println("")
 	bar := getProgressBar(len(devices), "Migrating Devices and Gateways...")
 	successfulCreates := 0
 
@@ -273,13 +269,12 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 
 	resultC := make(chan ErrorLog, len(devices))
 
-	for i := 0; i < len(devices); i++ {
-		idx := i
+	for _, device := range devices {
 		if barErr := bar.Add(1); barErr != nil {
 			log.Fatalln("Unable to add to progress bar: ", barErr)
 		}
 		wp.AddTask(func() {
-			resp, err := createDevice(deviceService, devices[idx])
+			resp, err := createDevice(deviceService, device)
 			// Create Device Successful
 			if err == nil {
 				resultC <- ErrorLog{}
@@ -289,7 +284,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 			// Checking if device exists - status code 409
 			if !strings.Contains(err.Error(), "Error 409") {
 				resultC <- ErrorLog{
-					DeviceId: devices[idx].Id,
+					DeviceId: device.Id,
 					Context:  "Error when Creating Device",
 					Error:    err,
 				}
@@ -299,7 +294,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 			// Checking if network error
 			if resp != nil && resp.ServerResponse.HTTPStatusCode != http.StatusConflict {
 				resultC <- ErrorLog{
-					DeviceId: devices[idx].Id,
+					DeviceId: device.Id,
 					Context:  "Error when Creating Device",
 					Error:    err,
 				}
@@ -307,11 +302,11 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 			}
 
 			// If Device exists, patch it
-			err = updateDevice(deviceService, devices[idx])
+			err = updateDevice(deviceService, device)
 
 			if err != nil {
 				resultC <- ErrorLog{
-					DeviceId: devices[idx].Id,
+					DeviceId: device.Id,
 					Context:  "Error when Patching Device",
 					Error:    err,
 				}
@@ -379,6 +374,7 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 }
 
 func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) (*cbiotcore.Device, error) {
+	log.Printf("attempting to create device with id: %s\n", device.Id)
 	call := deviceService.Create(getCBRegistryPath(), transform(device))
 	createDevResp, err := call.Do()
 	return createDevResp, err
@@ -438,10 +434,6 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 
 	if err != nil {
 		log.Fatalln("Unable to list gateways from CB registry. Reason: ", err.Error())
-	}
-
-	if len(resp.Devices) == 0 {
-		return
 	}
 
 	for _, device := range resp.Devices {

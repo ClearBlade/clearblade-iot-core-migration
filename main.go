@@ -58,7 +58,7 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
-	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
+	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Deletes all contents from the destination CB registry prior to migration")
 	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of CSVs")
 
 	flag.Parse()
@@ -173,6 +173,17 @@ func getIoTCoreService(serviceAccountFilePath string) (*cbiotcore.Service, error
 	return cbiotcore.NewService(context.Background())
 }
 
+func verifyRegistryDetails(service *cbiotcore.Service, registryName, region string) error {
+	regDetails, err := cbiotcore.GetRegistryCredentials(registryName, region, service)
+	if err != nil {
+		return err
+	}
+	if regDetails.SystemKey == "" {
+		return fmt.Errorf("no system key found in registry %s (region: %s)", registryName, region)
+	}
+	return nil
+}
+
 func main() {
 	if len(os.Args) == 1 {
 		log.Fatalln("No flags supplied. Use clearblade-iot-core-migration --help to view details.")
@@ -195,17 +206,11 @@ func main() {
 
 	sourceService, err := getIoTCoreService(Args.cbSourceServiceAccount)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("Unable to connect to source registry: %s\n", err)
 	}
-
-	sourceRegDetails, err := cbiotcore.GetRegistryCredentials(Args.cbSourceRegistryName, Args.cbSourceRegion, sourceService)
+	err = verifyRegistryDetails(sourceService, Args.cbSourceRegistryName, Args.cbSourceRegion)
 	if err != nil {
-		log.Fatalln(err)
-	}
-
-	if sourceRegDetails.SystemKey == "" {
-		printfColored(colorRed, "\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
-		os.Exit(0)
+		log.Fatalf("Error verifying registry details: %s\n", err)
 	}
 
 	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceService)
@@ -218,13 +223,11 @@ func main() {
 
 	destinationService, err := getIoTCoreService(Args.cbServiceAccount)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Unable to connect to destination registry: %s\n", err)
 	}
-
-	regDetails, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, destinationService)
-	if regDetails.SystemKey == "" {
-		printfColored(colorRed, "\u2715 Unable to fetch ClearBlade destination registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
-		os.Exit(0)
+	err = verifyRegistryDetails(destinationService, Args.cbRegistryName, Args.cbRegistryRegion)
+	if err != nil {
+		log.Fatalf("Error verifying destination registry details: %s\n", err)
 	}
 
 	// Fetch devices from the given registry
