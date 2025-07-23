@@ -89,12 +89,6 @@ func fetchConfigHistory(service *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 		return nil
 	}
 
-	recorder, err := newCSVRecorder()
-	if err != nil {
-		log.Fatalln("Error creating csv recorder: ", err)
-	}
-	defer recorder.close()
-
 	configMutex := sync.Mutex{}
 	deviceConfigs := make(map[string]interface{})
 
@@ -111,7 +105,6 @@ func fetchConfigHistory(service *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 
 			configMutex.Lock()
 			defer configMutex.Unlock()
-			recorder.RecordDeviceConfig(device.Id, dConfig)
 			deviceConfigs[device.Id] = dConfig
 			bar.Add(1)
 		})
