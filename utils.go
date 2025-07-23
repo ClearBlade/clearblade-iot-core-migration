@@ -47,20 +47,20 @@ func printfColored(color, format string, args ...interface{}) {
 	fmt.Printf(color+format+colorReset, args...)
 }
 
-func readCsvFile(filePath string) [][]string {
-	printfColored(colorGreen, "\u2713 Reading CSV file")
+func readCsvFile(filePath string) ([][]string, error) {
+	printfColored(colorGreen, "\u2713 Reading CSV file at %s", filePath)
 	f, err := os.Open(filePath)
 	if err != nil {
-		log.Fatalln("Unable to read input file: ", filePath, err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 
 	records, err := csv.NewReader(f).ReadAll()
 	if err != nil {
-		log.Fatalln("Unable to parse file as CSV for: ", filePath, err)
+		return nil, fmt.Errorf("failed to parse CSV: %w", err)
 	}
 
-	return records
+	return records, nil
 }
 
 func parseDeviceIds(rows [][]string) []string {
@@ -143,7 +143,17 @@ func readInput(msg string) (string, error) {
 	return input, nil
 }
 
-func getProgressBar(total int, description string) *progressbar.ProgressBar {
+type progressBar struct {
+	*progressbar.ProgressBar
+}
+
+func (pb *progressBar) Add(num int) {
+	if err := pb.ProgressBar.Add(num); err != nil {
+		log.Fatalf("Unable to add %d to progress bar: %s\n", num, err)
+	}
+}
+
+func getProgressBar(total int, description string) *progressBar {
 	description = colorYellow + description + colorReset
 	bar := progressbar.NewOptions(total,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
@@ -151,6 +161,7 @@ func getProgressBar(total int, description string) *progressbar.ProgressBar {
 		progressbar.OptionSetWidth(30),
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
+		progressbar.OptionSetPredictTime(true),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
 			SaucerHead:    "[green]>[reset]",
@@ -159,7 +170,7 @@ func getProgressBar(total int, description string) *progressbar.ProgressBar {
 			BarEnd:        "]",
 		}))
 
-	return bar
+	return &progressBar{bar}
 }
 
 func getSpinner(description string) *progressbar.ProgressBar {

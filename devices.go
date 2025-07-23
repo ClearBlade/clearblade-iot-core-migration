@@ -17,18 +17,24 @@ import (
 
 func fetchDevicesFromClearBladeIotCore(service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
-	csvDevices := []*cbiotcore.Device{}
+	var devices []*cbiotcore.Device
 	if Args.devicesCsvFile != "" {
-		csvDevices = fetchDevicesFromCSV(deviceService, Args.devicesCsvFile)
+		devices = fetchDevicesFromCSV(deviceService, Args.devicesCsvFile)
+	} else {
+		devices = fetchAllDevices(deviceService)
 	}
-	return fetchAllDevicesFromClearBlade(deviceService, csvDevices)
+	configHistory := fetchConfigHistory(deviceService, devices)
+	return devices, configHistory
 }
 
 func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesService, csvFile string) []*cbiotcore.Device {
 	var deviceMutex sync.Mutex
 	var devices []*cbiotcore.Device
 
-	csvData := readCsvFile(csvFile)
+	csvData, err := readCsvFile(csvFile)
+	if err != nil {
+		log.Fatal(err) // TODO
+	}
 	deviceIds := parseDeviceIds(csvData)
 
 	wp := NewWorkerPool(TotalWorkers)
@@ -51,69 +57,71 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 	return devices
 }
 
-func fetchAllDevicesFromClearBlade(service *cbiotcore.ProjectsLocationsRegistriesDevicesService, csvDevices []*cbiotcore.Device) ([]*cbiotcore.Device, map[string]interface{}) {
+func fetchAllDevices(service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.Device {
+	spinner := getSpinner("Fetching all devices from registry...")
+	req := service.List(getCBSourceRegistryPath()).PageSize(int64(1000)) // TODO page size
+	resp, err := req.Do()
+	if err != nil {
+		log.Fatalln("Error fetching all devices: ", err)
+	}
+
 	var devices []*cbiotcore.Device
-	configMutex := sync.Mutex{}
-	deviceConfigs := make(map[string]interface{})
-	if len(csvDevices) != 0 {
-		devices = csvDevices
-	} else {
-		spinner := getSpinner("Fetching all devices from registry...")
-		req := service.List(getCBSourceRegistryPath()).PageSize(int64(1000))
-		resp, err := req.Do()
+	for resp.NextPageToken != "" {
+		devices = append(devices, resp.Devices...)
+
+		if err := spinner.Add(1); err != nil {
+			log.Fatalln("Unable to add to spinner: ", err)
+		}
+
+		resp, err = req.PageToken(resp.NextPageToken).Do()
+
 		if err != nil {
-			log.Fatalln("Error fetching all devices: ", err)
+			log.Fatalln("Error fetching all devices: ", err.Error())
 		}
-
-		for resp.NextPageToken != "" {
-			devices = append(devices, resp.Devices...)
-
-			if err := spinner.Add(1); err != nil {
-				log.Fatalln("Unable to add to spinner: ", err)
-			}
-
-			resp, err = req.PageToken(resp.NextPageToken).Do()
-
-			if err != nil {
-				log.Fatalln("Error fetching all devices: ", err.Error())
-			}
-		}
-
-		printfColored(colorGreen, "\u2713 Done fetching devices")
 	}
+	printfColored(colorGreen, "\u2713 Done fetching devices")
 
-	if Args.configHistory {
-		bar := getProgressBar(len(devices), "Gathering Device Config History...")
-		wp := NewWorkerPool(TotalWorkers)
-		wp.Run()
-
-		for _, device := range devices {
-			d := device
-			wp.AddTask(func() {
-				dConfig := fetchConfigVersionHistory(d, service)
-				configMutex.Lock()
-				deviceConfigs[d.Id] = dConfig
-				configMutex.Unlock()
-
-				if err := bar.Add(1); err != nil {
-					log.Fatalln("Unable to add to progress bar: ", err)
-				}
-			})
-		}
-
-		wp.Wait()
-		printfColored(colorGreen, "\u2713 Done fetching device configuration history")
-	}
-	return devices, deviceConfigs
+	return devices
 }
 
-func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
+func fetchConfigHistory(service *cbiotcore.ProjectsLocationsRegistriesDevicesService, devices []*cbiotcore.Device) map[string]interface{} {
+	if !Args.configHistory {
+		return nil
+	}
+
+	configMutex := sync.Mutex{}
+	deviceConfigs := make(map[string]interface{})
+
+	bar := getProgressBar(len(devices), "Gathering Device Config History...")
+	wp := NewWorkerPool(TotalWorkers)
+	wp.Run()
+
+	for _, device := range devices {
+		wp.AddTask(func() {
+			dConfig, err := fetchConfigVersionHistory(device, service)
+			if err != nil {
+				log.Fatalln("Error fetching config history: ", err)
+			}
+
+			configMutex.Lock()
+			defer configMutex.Unlock()
+			deviceConfigs[device.Id] = dConfig
+			bar.Add(1)
+		})
+	}
+
+	wp.Wait()
+	printfColored(colorGreen, "\u2713 Done fetching device configuration history")
+	return deviceConfigs
+}
+
+func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) ([]*cbiotcore.DeviceConfig, error) {
 	req := service.ConfigVersions.List(getCBSourceDevicePath(device.Id))
 	resp, err := req.Do()
 	if err != nil {
-		log.Fatalln("Error fetching config version history: ", err)
+		return nil, err
 	}
-	return resp.DeviceConfigs
+	return resp.DeviceConfigs, nil
 }
 
 func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDeviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, cbRegistryService *cbiotcore.ProjectsLocationsRegistriesService) {
@@ -171,9 +179,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 	for _, gateway := range gateways {
 
 		wp.AddTask(func() {
-			if barErr := bar.Add(1); barErr != nil {
-				log.Fatalln("Unable to add to progress bar: ", barErr)
-			}
+			bar.Add(1)
 
 			// First unbind any existing devices from the target gateway
 			unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway.Id, parent, deviceService, registryService)
@@ -270,9 +276,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	resultC := make(chan ErrorLog, len(devices))
 
 	for _, device := range devices {
-		if barErr := bar.Add(1); barErr != nil {
-			log.Fatalln("Unable to add to progress bar: ", barErr)
-		}
+		bar.Add(1)
 		wp.AddTask(func() {
 			resp, err := createDevice(deviceService, device)
 			// Create Device Successful
