@@ -165,6 +165,7 @@ func getProgressBar(total int, description string) *progressBar {
 		progressbar.OptionSetWidth(30),
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
 		progressbar.OptionSetPredictTime(true),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
@@ -184,6 +185,7 @@ func getSpinner(description string) *progressBar {
 		progressbar.OptionSetWidth(30),
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
 	)
 	return &progressBar{bar}
 }
