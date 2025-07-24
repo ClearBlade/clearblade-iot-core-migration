@@ -55,20 +55,21 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 func fetchAllDevices(service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.Device {
 	spinner := getSpinner("Fetching all devices from registry...")
 	defer spinner.Finish()
-	req := service.List(getCBSourceRegistryPath()).PageSize(int64(1000)) // TODO page size
+	req := service.List(getCBSourceRegistryPath()).PageSize(Args.pageSize)
 	resp, err := req.Do()
 	if err != nil {
 		log.Fatalln("Error fetching all devices: ", err)
 	}
 
 	var devices []*cbiotcore.Device
+	devices = append(devices, resp.Devices...)
 	for resp.NextPageToken != "" {
-		devices = append(devices, resp.Devices...)
 		spinner.Add(1)
 		resp, err = req.PageToken(resp.NextPageToken).Do()
 		if err != nil {
 			log.Fatalln("Error fetching all devices: ", err.Error())
 		}
+		devices = append(devices, resp.Devices...)
 	}
 	printfColored(colorGreen, "\u2713 Done fetching devices")
 
@@ -135,14 +136,27 @@ func fetchGatewayBindings(service *cbiotcore.Service, devices []*cbiotcore.Devic
 	wp.Run()
 	for _, gateway := range gateways {
 		wp.AddTask(func() {
-			boundDevices, err := deviceService.List(getCBSourceRegistryPath()).GatewayListOptionsAssociationsGatewayId(gateway.Id).PageSize(10000).Do()
+			req := deviceService.List(getCBSourceRegistryPath()).GatewayListOptionsAssociationsGatewayId(gateway.Id).PageSize(Args.pageSize)
+			resp, err := req.Do()
 			if err != nil {
 				// TODO
 				return
 			}
+
+			var allBoundDevices []*cbiotcore.Device
+			allBoundDevices = append(allBoundDevices, resp.Devices...)
+			for resp.NextPageToken != "" {
+				resp, err = req.PageToken(resp.NextPageToken).Do()
+				if err != nil {
+					// TODO
+					return
+				}
+				allBoundDevices = append(allBoundDevices, resp.Devices...)
+			}
+
 			bindingMutex.Lock()
 			defer bindingMutex.Unlock()
-			bindings[gateway.Id] = boundDevices.Devices
+			bindings[gateway.Id] = allBoundDevices
 		})
 	}
 	wp.Wait()
@@ -375,13 +389,24 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 	defer spinner.Finish()
 
 	//FetchGateways
-	resp, err := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").PageSize(10000).Do()
+	req := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").PageSize(Args.pageSize)
+	resp, err := req.Do()
 
 	if err != nil {
 		log.Fatalln("Unable to list gateways from CB registry. Reason: ", err.Error())
 	}
 
-	for _, device := range resp.Devices {
+	var allGateways []*cbiotcore.Device
+	allGateways = append(allGateways, resp.Devices...)
+	for resp.NextPageToken != "" {
+		resp, err = req.PageToken(resp.NextPageToken).Do()
+		if err != nil {
+			log.Fatalln("Unable to list gateways from CB registry. Reason: ", err.Error())
+		}
+		allGateways = append(allGateways, resp.Devices...)
+	}
+
+	for _, device := range allGateways {
 		//Unbind devices from all gateways
 		unbindFromGatewayIfAlreadyExistsInCBRegistry(device.Id, parent, cbDeviceService, registryService)
 		//Delete all gateways
@@ -391,12 +416,23 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 		spinner.Add(1)
 	}
 
-	resp, err = cbDeviceService.List(parent).PageSize(10000).Do()
+	req = cbDeviceService.List(parent).PageSize(Args.pageSize)
+	resp, err = req.Do()
 	if err != nil {
 		log.Fatalln("Unable to list devices from CB registry. Reason: ", err.Error())
 	}
 
-	for _, device := range resp.Devices {
+	var allDevices []*cbiotcore.Device
+	allDevices = append(allDevices, resp.Devices...)
+	for resp.NextPageToken != "" {
+		resp, err = req.PageToken(resp.NextPageToken).Do()
+		if err != nil {
+			log.Fatalln("Unable to list devices from CB registry. Reason: ", err.Error())
+		}
+		allDevices = append(allDevices, resp.Devices...)
+	}
+
+	for _, device := range allDevices {
 		//Delete all devices
 		if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
 			log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())

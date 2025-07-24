@@ -41,6 +41,7 @@ type DeviceMigratorArgs struct {
 	exportBatchSize   int64
 	workDir           string
 	workerPoolSize    int
+	pageSize          int64
 }
 
 func initMigrationFlags() {
@@ -64,6 +65,7 @@ func initMigrationFlags() {
 	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of CSVs")
 	flag.StringVar(&Args.workDir, "workDir", "./migration_data", "Directory to store migration data")
 	flag.IntVar(&Args.workerPoolSize, "workerPoolSize", 25, "Number of workers used to perform migration")
+	flag.Int64Var(&Args.pageSize, "pageSize", 10000, "Page size for API calls when fetching devices/gateways")
 
 	flag.Parse()
 }
