@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	cbIotCoreMigrationVersion = "v1.6.0"
+	cbIotCoreMigrationVersion = "v1.7.0"
 )
 
 var (
@@ -64,7 +64,7 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Deletes all contents from the destination CB registry prior to migration")
 	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of CSVs")
 	flag.StringVar(&Args.workDir, "workDir", "./migration_data", "Directory to store migration data")
-	flag.IntVar(&Args.workerPoolSize, "workerPoolSize", 25, "Number of workers used to perform migration")
+	flag.IntVar(&Args.workerPoolSize, "workerPoolSize", 100, "Number of workers used to perform migration")
 	flag.Int64Var(&Args.pageSize, "pageSize", 1000, "Page size for API calls when fetching devices/gateways")
 
 	flag.Parse()
