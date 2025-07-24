@@ -247,7 +247,11 @@ func main() {
 		printfColored(colorGreen, "\u2713 Successfully Cleaned up destination ClearBlade registry!")
 	}
 
-	addDevicesToClearBlade(destinationService, devices, deviceConfigs)
+	addDevicesToClearBlade(destinationService, devices)
+	err = updateConfigHistory(destinationService, deviceConfigs)
+	if err != nil {
+		printfColored(colorRed, "\u2715 Unable to update config version history! Reason: %v", err)
+	}
 	migrateBoundDevicesToClearBlade(destinationService, gatewayBindings)
 
 	printfColored(colorGreen, "\u2713 Migration complete!")

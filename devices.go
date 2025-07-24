@@ -54,6 +54,7 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 
 func fetchAllDevices(service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.Device {
 	spinner := getSpinner("Fetching all devices from registry...")
+	defer spinner.Finish()
 	req := service.List(getCBSourceRegistryPath()).PageSize(int64(1000)) // TODO page size
 	resp, err := req.Do()
 	if err != nil {
@@ -63,13 +64,8 @@ func fetchAllDevices(service *cbiotcore.ProjectsLocationsRegistriesDevicesServic
 	var devices []*cbiotcore.Device
 	for resp.NextPageToken != "" {
 		devices = append(devices, resp.Devices...)
-
-		if err := spinner.Add(1); err != nil {
-			log.Fatalln("Unable to add to spinner: ", err)
-		}
-
+		spinner.Add(1)
 		resp, err = req.PageToken(resp.NextPageToken).Do()
-
 		if err != nil {
 			log.Fatalln("Error fetching all devices: ", err.Error())
 		}
@@ -89,6 +85,8 @@ func fetchConfigHistory(service *cbiotcore.Service, devices []*cbiotcore.Device)
 	deviceConfigs := make(map[string]interface{})
 
 	bar := getProgressBar(len(devices), "Gathering Device Config History...")
+	defer bar.Finish()
+
 	wp := NewWorkerPool()
 	wp.Run()
 
@@ -179,12 +177,16 @@ func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDevi
 }
 
 func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gatewayBindings map[string][]*cbiotcore.Device) {
+	if len(gatewayBindings) == 0 {
+		return
+	}
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
 	parent := getCBRegistryPath()
 
 	bar := getProgressBar(len(gatewayBindings), "Migrating bound devices for gateways...")
+	defer bar.Finish()
 	wp := NewWorkerPool()
 	wp.Run()
 
@@ -236,8 +238,9 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gatewayBindings
 	printfColored(colorGreen, "\u2713 Done migrating bound devices for gateways")
 }
 
-func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device, deviceConfigs map[string]interface{}) {
+func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device) {
 	bar := getProgressBar(len(devices), "Migrating Devices and Gateways...")
+	defer bar.Finish()
 	successfulCreates := newCounter()
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
@@ -247,7 +250,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	for _, device := range devices {
 		bar.Add(1)
 		wp.AddTask(func() {
-			resp, err := createDevice(deviceService, device)
+			resp, err := deviceService.Create(getCBRegistryPath(), transform(device)).Do()
 			if err == nil {
 				// Create Device Successful
 				successfulCreates.Increment()
@@ -278,13 +281,6 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	}
 
 	wp.Wait()
-
-	if len(deviceConfigs) != 0 {
-		err := updateConfigHistory(service, deviceConfigs)
-		if err != nil {
-			printfColored(colorRed, "\u2715 Unable to update config version history! Reason: %v", err)
-		}
-	}
 
 	if successfulCreates.Count() == len(devices) {
 		printfColored(colorGreen, "\u2713 Migrated %d/%d devices and gateways!", successfulCreates.Count(), len(devices))
@@ -325,15 +321,12 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	return nil
 }
 
-func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) (*cbiotcore.Device, error) {
-	call := deviceService.Create(getCBRegistryPath(), transform(device))
-	createDevResp, err := call.Do()
-	return createDevResp, err
-}
-
 func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
-	creds, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
+	if len(deviceConfigs) == 0 {
+		return nil
+	}
 
+	creds, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
 	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}
 	postBody, _ := json.Marshal(transformedDeviceConfigHistory)
 	responseBody := bytes.NewBuffer(postBody)
@@ -379,6 +372,7 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
 	spinner := getSpinner("Cleaning Up ClearBlade Registry...")
+	defer spinner.Finish()
 
 	//FetchGateways
 	resp, err := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").PageSize(10000).Do()
@@ -394,9 +388,7 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 		if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
 			log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())
 		}
-		if err := spinner.Add(1); err != nil {
-			log.Fatalln("Unable to add to spinner: ", err)
-		}
+		spinner.Add(1)
 	}
 
 	resp, err = cbDeviceService.List(parent).PageSize(10000).Do()
@@ -409,8 +401,6 @@ func deleteAllFromCbRegistry(service *cbiotcore.Service) {
 		if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
 			log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())
 		}
-		if err := spinner.Add(1); err != nil {
-			log.Fatalln("Unable to add to spinner: ", err)
-		}
+		spinner.Add(1)
 	}
 }

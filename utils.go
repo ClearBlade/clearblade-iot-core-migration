@@ -147,7 +147,13 @@ type progressBar struct {
 
 func (pb *progressBar) Add(num int) {
 	if err := pb.ProgressBar.Add(num); err != nil {
-		log.Fatalf("Unable to add %d to progress bar: %s\n", num, err)
+		log.Printf("Unable to add %d to progress bar: %s\n", num, err)
+	}
+}
+
+func (pb *progressBar) Finish() {
+	if err := pb.ProgressBar.Finish(); err != nil {
+		log.Printf("Unable to finish progress bar: %s\n", err)
 	}
 }
 
@@ -171,7 +177,7 @@ func getProgressBar(total int, description string) *progressBar {
 	return &progressBar{bar}
 }
 
-func getSpinner(description string) *progressbar.ProgressBar {
+func getSpinner(description string) *progressBar {
 	description = colorYellow + description + colorReset
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
@@ -179,7 +185,7 @@ func getSpinner(description string) *progressbar.ProgressBar {
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
 	)
-	return bar
+	return &progressBar{bar}
 }
 
 func getAbsPath(path string) (string, error) {
