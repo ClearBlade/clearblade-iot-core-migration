@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -34,6 +35,8 @@ type CheckpointState struct {
 	TotalDevices      int                                  `json:"total_devices"`
 	Args              DeviceMigratorArgs                   `json:"args"`
 	mutex             sync.RWMutex                         `json:"-"`
+	dirty             bool                                 `json:"-"`
+	saveTimer         *time.Timer                          `json:"-"`
 }
 
 var globalCheckpoint *CheckpointState
@@ -43,7 +46,7 @@ func getCheckpointFilePath() string {
 }
 
 func NewCheckpointState() *CheckpointState {
-	return &CheckpointState{
+	c := &CheckpointState{
 		StartTime:         time.Now(),
 		LastUpdated:       time.Now(),
 		CurrentPhase:      PhaseDeviceFetch,
@@ -54,7 +57,10 @@ func NewCheckpointState() *CheckpointState {
 		ConfigHistory:     make(map[string][]*cbiotcore.DeviceConfig),
 		GatewaysProcessed: make(map[string]struct{}),
 		Args:              Args,
+		dirty:             false,
 	}
+	c.startSaveTimer()
+	return c
 }
 
 func LoadCheckpoint() (*CheckpointState, error) {
@@ -74,6 +80,8 @@ func LoadCheckpoint() (*CheckpointState, error) {
 		return nil, fmt.Errorf("failed to parse checkpoint file: %w", err)
 	}
 
+	state.dirty = false
+	state.startSaveTimer()
 	return &state, nil
 }
 
@@ -94,10 +102,40 @@ func (c *CheckpointState) Save() error {
 		return fmt.Errorf("failed to write checkpoint file: %w", err)
 	}
 
+	c.dirty = false
 	return nil
 }
 
-func (c *CheckpointState) SetPhase(phase MigrationPhase) error {
+func (c *CheckpointState) markDirty() {
+	c.dirty = true
+}
+
+func (c *CheckpointState) startSaveTimer() {
+	if c.saveTimer != nil {
+		c.saveTimer.Stop()
+	}
+	c.saveTimer = time.AfterFunc(5*time.Second, func() {
+		c.mutex.Lock()
+		defer c.mutex.Unlock()
+		if c.dirty {
+			if err := c.Save(); err != nil {
+				printfColored(colorYellow, "Warning: Failed to auto-save checkpoint: %v", err)
+			}
+		}
+		c.startSaveTimer()
+	})
+}
+
+func (c *CheckpointState) FlushToDisk() error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if c.dirty {
+		return c.Save()
+	}
+	return nil
+}
+
+func (c *CheckpointState) SetPhase(phase MigrationPhase) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -105,48 +143,50 @@ func (c *CheckpointState) SetPhase(phase MigrationPhase) error {
 		c.CompletedPhases = append(c.CompletedPhases, c.CurrentPhase)
 	}
 	c.CurrentPhase = phase
-	return c.Save()
+	if err := c.Save(); err != nil {
+		log.Fatalf("failed to save checkpoint state: %s\n", err)
+	}
 }
 
-func (c *CheckpointState) AddFetchedDevice(device *cbiotcore.Device) error {
+func (c *CheckpointState) AddFetchedDevice(device *cbiotcore.Device) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.DevicesFetched[device.Id] = device
-	return c.Save()
+	c.markDirty()
 }
 
-func (c *CheckpointState) AddMigratedDevice(deviceId string) error {
+func (c *CheckpointState) AddMigratedDevice(deviceId string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.DevicesMigrated[deviceId] = struct{}{}
-	return c.Save()
+	c.markDirty()
 }
 
-func (c *CheckpointState) AddProcessedConfig(deviceId string, deviceConfig []*cbiotcore.DeviceConfig) error {
+func (c *CheckpointState) AddProcessedConfig(deviceId string, deviceConfig []*cbiotcore.DeviceConfig) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.ConfigsProcessed[deviceId] = struct{}{}
 	c.ConfigHistory[deviceId] = deviceConfig
-	return c.Save()
+	c.markDirty()
 }
 
-func (c *CheckpointState) AddProcessedGateway(gatewayId string) error {
+func (c *CheckpointState) AddProcessedGateway(gatewayId string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.GatewaysProcessed[gatewayId] = struct{}{}
-	return c.Save()
+	c.markDirty()
 }
 
-func (c *CheckpointState) SetTotalDevices(count int) error {
+func (c *CheckpointState) SetTotalDevices(count int) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
 	c.TotalDevices = count
-	return c.Save()
+	c.markDirty()
 }
 
 func (c *CheckpointState) IsPhaseCompleted(phase MigrationPhase) bool {
