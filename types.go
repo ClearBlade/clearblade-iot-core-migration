@@ -94,3 +94,27 @@ func (el *ErrorLogger) WriteToFile() {
 
 	csvWriter.Flush()
 }
+
+type counter struct {
+	count int
+	lock  *sync.Mutex
+}
+
+func newCounter() *counter {
+	return &counter{
+		count: 0,
+		lock:  &sync.Mutex{},
+	}
+}
+
+func (c *counter) Increment() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.count++
+}
+
+func (c *counter) Count() int {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.count
+}

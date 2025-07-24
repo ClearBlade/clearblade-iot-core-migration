@@ -238,68 +238,46 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gatewayBindings
 
 func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device, deviceConfigs map[string]interface{}) {
 	bar := getProgressBar(len(devices), "Migrating Devices and Gateways...")
-	successfulCreates := 0
-
+	successfulCreates := newCounter()
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
 	wp := NewWorkerPool(TotalWorkers)
 	wp.Run()
 
-	resultC := make(chan ErrorLog, len(devices))
-
 	for _, device := range devices {
 		bar.Add(1)
 		wp.AddTask(func() {
 			resp, err := createDevice(deviceService, device)
-			// Create Device Successful
 			if err == nil {
-				resultC <- ErrorLog{}
+				// Create Device Successful
+				successfulCreates.Increment()
 				return
 			}
 
 			// Checking if device exists - status code 409
 			if !strings.Contains(err.Error(), "Error 409") {
-				resultC <- ErrorLog{
-					DeviceId: device.Id,
-					Context:  "Error when Creating Device",
-					Error:    err,
-				}
+				errorLogger.AddError("Create Device", device.Id, err)
 				return
 			}
 
 			// Checking if network error
 			if resp != nil && resp.ServerResponse.HTTPStatusCode != http.StatusConflict {
-				resultC <- ErrorLog{
-					DeviceId: device.Id,
-					Context:  "Error when Creating Device",
-					Error:    err,
-				}
+				errorLogger.AddError("Create Device", device.Id, err)
 				return
 			}
 
 			// If Device exists, patch it
 			err = updateDevice(deviceService, device)
-
 			if err != nil {
-				resultC <- ErrorLog{
-					DeviceId: device.Id,
-					Context:  "Error when Patching Device",
-					Error:    err,
-				}
+				errorLogger.AddError("Patch Device", device.Id, err)
 				return
 			}
-			resultC <- ErrorLog{}
+
+			successfulCreates.Increment()
 		})
 	}
 
-	for i := 0; i < len(devices); i++ {
-		res := <-resultC
-		if res.Error != nil {
-			errorLogger.AddErrorLog(res)
-		} else {
-			successfulCreates += 1
-		}
-	}
+	wp.Wait()
 
 	if len(deviceConfigs) != 0 {
 		err := updateConfigHistory(service, deviceConfigs)
@@ -308,10 +286,10 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 		}
 	}
 
-	if successfulCreates == len(devices) {
-		printfColored(colorGreen, "\u2713 Migrated %d/%d devices and gateways!", successfulCreates, len(devices))
+	if successfulCreates.Count() == len(devices) {
+		printfColored(colorGreen, "\u2713 Migrated %d/%d devices and gateways!", successfulCreates.Count(), len(devices))
 	} else {
-		printfColored(colorRed, "\u2715 Failed to migrate all devices. Migrated %d/%d devices!", successfulCreates, len(devices))
+		printfColored(colorRed, "\u2715 Failed to migrate all devices. Migrated %d/%d devices!", successfulCreates.Count(), len(devices))
 	}
 }
 
