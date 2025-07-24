@@ -6,17 +6,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	cbiotcore "github.com/clearblade/go-iot"
+	"github.com/k0kubun/go-ansi"
+	"github.com/schollz/progressbar/v3"
 	"log"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
-
-	cbiotcore "github.com/clearblade/go-iot"
-	"github.com/k0kubun/go-ansi"
-	"github.com/schollz/progressbar/v3"
 )
 
 var (
@@ -246,42 +244,6 @@ func transform(device *cbiotcore.Device) *cbiotcore.Device {
 	}
 
 	return cbDevice
-}
-
-func generateFailedDevicesCSV(errorLogs []ErrorLog) error {
-	currDir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	failedDevicesFile := fmt.Sprint(currDir, "/failed_devices_", time.Now().Format("2006-01-02T15:04:05"), ".csv")
-
-	if runtime.GOOS == "windows" {
-		failedDevicesFile = fmt.Sprint(currDir, "\\failed_devices_", time.Now().Format("2006-01-02T15-04-05"), ".csv")
-	}
-
-	f, err := os.OpenFile(failedDevicesFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
-	fileContents := "context,error,deviceId\n"
-	for i := 0; i < len(errorLogs); i++ {
-		errMsg := ""
-		if errorLogs[i].Error != nil {
-			errMsg = errorLogs[i].Error.Error()
-		}
-		fileContents += fmt.Sprintf(`%s,"%s",%s`, errorLogs[i].Context, errMsg, errorLogs[i].DeviceId)
-		fileContents += "\n"
-	}
-
-	if _, err := f.WriteString(fileContents); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func ExportDeviceBatches(devices []*cbiotcore.Device, batchSize int64) {

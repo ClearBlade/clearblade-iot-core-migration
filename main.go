@@ -17,7 +17,8 @@ const (
 )
 
 var (
-	Args DeviceMigratorArgs
+	Args        DeviceMigratorArgs
+	errorLogger = NewErrorLogger()
 )
 
 type DeviceMigratorArgs struct {
@@ -206,6 +207,8 @@ func main() {
 	printfColored(colorGreen, "\u2713 All Flags validated!")
 	printfColored(colorCyan, "================= Starting Device Migration =================\nRunning Version: %s\n", cbIotCoreMigrationVersion)
 
+	// --------------------- Fetch data from source ---------------------
+
 	sourceService, err := getIoTCoreService(Args.cbSourceServiceAccount)
 	if err != nil {
 		log.Fatalf("Unable to connect to source registry: %s\n", err)
@@ -215,13 +218,17 @@ func main() {
 		log.Fatalf("Error verifying registry details: %s\n", err)
 	}
 
-	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceService)
+	devices := fetchDevices(sourceService)
+	deviceConfigs := fetchConfigHistory(sourceService, devices)
+	gatewayBindings := fetchGatewayBindings(sourceService, devices)
 
-	if Args.exportBatchSize != 0 {
+	if Args.exportBatchSize != 0 { // TODO
 		ExportDeviceBatches(devices, Args.exportBatchSize)
 		printfColored(colorGreen, "\u2713 Device batches exported to csv!")
 		return
 	}
+
+	// --------------------- Push data to destination ---------------------
 
 	destinationService, err := getIoTCoreService(Args.cbServiceAccount)
 	if err != nil {
@@ -232,24 +239,15 @@ func main() {
 		log.Fatalf("Error verifying destination registry details: %s\n", err)
 	}
 
-	// Fetch devices from the given registry
-	errorLogs := make([]ErrorLog, 0)
+	defer errorLogger.WriteToFile()
 
 	if Args.cleanupCbRegistry {
 		deleteAllFromCbRegistry(destinationService)
 		printfColored(colorGreen, "\u2713 Successfully Cleaned up destination ClearBlade registry!")
 	}
 
-	// Add fetched devices to ClearBlade Device table
-	errorLogs = addDevicesToClearBlade(destinationService, devices, deviceConfigs, errorLogs)
-
-	migrateBoundDevicesToClearBlade(destinationService, sourceService, devices, errorLogs)
-
-	if len(errorLogs) > 0 {
-		if err := generateFailedDevicesCSV(errorLogs); err != nil {
-			log.Fatalln(err)
-		}
-	}
+	addDevicesToClearBlade(destinationService, devices, deviceConfigs)
+	migrateBoundDevicesToClearBlade(destinationService, gatewayBindings)
 
 	printfColored(colorGreen, "\u2713 Migration complete!")
 }
