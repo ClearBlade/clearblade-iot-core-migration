@@ -209,16 +209,19 @@ func paginatedFetch(req PaginatedRequest, spinnerDesc string) ([]*cbiotcore.Devi
 
 	var allDevices []*cbiotcore.Device
 	allDevices = append(allDevices, resp.Devices...)
+	if spinner != nil {
+		spinner.Add(len(resp.Devices))
+	}
 
 	for resp.NextPageToken != "" {
-		if spinner != nil {
-			spinner.Add(1)
-		}
 		resp, err = req.PageToken(resp.NextPageToken).Do()
 		if err != nil {
 			return nil, err
 		}
 		allDevices = append(allDevices, resp.Devices...)
+		if spinner != nil {
+			spinner.Add(len(resp.Devices))
+		}
 	}
 
 	return allDevices, nil

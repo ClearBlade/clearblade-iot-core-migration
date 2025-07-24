@@ -65,7 +65,7 @@ func initMigrationFlags() {
 	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of CSVs")
 	flag.StringVar(&Args.workDir, "workDir", "./migration_data", "Directory to store migration data")
 	flag.IntVar(&Args.workerPoolSize, "workerPoolSize", 25, "Number of workers used to perform migration")
-	flag.Int64Var(&Args.pageSize, "pageSize", 10000, "Page size for API calls when fetching devices/gateways")
+	flag.Int64Var(&Args.pageSize, "pageSize", 1000, "Page size for API calls when fetching devices/gateways")
 
 	flag.Parse()
 }
@@ -202,6 +202,10 @@ func main() {
 
 	initMigrationFlags()
 
+	if err := InitializeCheckpointSystem(); err != nil {
+		log.Fatalf("Failed to initialize checkpoint system: %s\n", err)
+	}
+
 	printfColored(colorGreen, "\u2713 Validating source flags")
 	validateSourceCBFlags()
 	printfColored(colorGreen, "\u2713 Validating destination flags")
@@ -260,6 +264,10 @@ func main() {
 		printfColored(colorRed, "\u2715 Unable to update config version history! Reason: %v", err)
 	}
 	migrateBoundDevicesToClearBlade(destinationService, gatewayBindings)
+
+	if err := GetCheckpoint().Complete(); err != nil {
+		printfColored(colorYellow, "Warning: Could not complete checkpoint cleanup: %s", err)
+	}
 
 	printfColored(colorGreen, "\u2713 Migration complete")
 }

@@ -118,3 +118,9 @@ func (c *counter) Count() int {
 	defer c.lock.Unlock()
 	return c.count
 }
+
+func (c *counter) SetCount(count int) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.count = count
+}
