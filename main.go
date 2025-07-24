@@ -207,7 +207,7 @@ func main() {
 	printfColored(colorGreen, "\u2713 Validating destination flags")
 	validateCBFlags(Args.cbSourceRegion)
 
-	printfColored(colorGreen, "\u2713 All Flags validated!")
+	printfColored(colorGreen, "\u2713 All Flags validated")
 	printfColored(colorCyan, "================= Starting Device Migration =================\nRunning Version: %s\n", cbIotCoreMigrationVersion)
 
 	// --------------------- Fetch data from source ---------------------
@@ -227,7 +227,7 @@ func main() {
 
 	if Args.exportBatchSize != 0 { // TODO
 		ExportDeviceBatches(devices, Args.exportBatchSize)
-		printfColored(colorGreen, "\u2713 Device batches exported to csv!")
+		printfColored(colorGreen, "\u2713 Device batches exported to csv")
 		return
 	}
 
@@ -246,15 +246,20 @@ func main() {
 
 	if Args.cleanupCbRegistry {
 		deleteAllFromCbRegistry(destinationService)
-		printfColored(colorGreen, "\u2713 Successfully Cleaned up destination ClearBlade registry!")
+		printfColored(colorGreen, " \u2713 Successfully cleaned up destination ClearBlade registry")
 	}
 
-	addDevicesToClearBlade(destinationService, devices)
+	migrated := addDevicesToClearBlade(destinationService, devices)
+	if migrated == len(devices) {
+		printfColored(colorGreen, " \u2713 Migrated %d/%d devices and gateways", migrated, len(devices))
+	} else {
+		printfColored(colorRed, " \u2715 Failed to migrate all devices. Migrated %d/%d devices", migrated, len(devices))
+	}
 	err = updateConfigHistory(destinationService, deviceConfigs)
 	if err != nil {
 		printfColored(colorRed, "\u2715 Unable to update config version history! Reason: %v", err)
 	}
 	migrateBoundDevicesToClearBlade(destinationService, gatewayBindings)
 
-	printfColored(colorGreen, "\u2713 Migration complete!")
+	printfColored(colorGreen, "\u2713 Migration complete")
 }

@@ -188,6 +188,40 @@ func getSpinner(description string) *progressBar {
 	return &progressBar{bar}
 }
 
+type PaginatedRequest interface {
+	Do() (*cbiotcore.ListDevicesResponse, error)
+	PageToken(token string) *cbiotcore.ProjectsLocationsRegistriesDevicesListCall
+}
+
+func paginatedFetch(req PaginatedRequest, spinnerDesc string) ([]*cbiotcore.Device, error) {
+	var spinner *progressBar
+	if spinnerDesc != "" {
+		spinner = getSpinner(spinnerDesc)
+		defer spinner.Finish()
+	}
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, err
+	}
+
+	var allDevices []*cbiotcore.Device
+	allDevices = append(allDevices, resp.Devices...)
+
+	for resp.NextPageToken != "" {
+		if spinner != nil {
+			spinner.Add(1)
+		}
+		resp, err = req.PageToken(resp.NextPageToken).Do()
+		if err != nil {
+			return nil, err
+		}
+		allDevices = append(allDevices, resp.Devices...)
+	}
+
+	return allDevices, nil
+}
+
 func getAbsPath(path string) (string, error) {
 	if len(path) == 0 {
 		return path, nil
