@@ -51,6 +51,13 @@ func (el *ErrorLogger) AddErrorLog(log ErrorLog) {
 }
 
 func (el *ErrorLogger) WriteToFile() {
+	el.lock.Lock()
+	defer el.lock.Unlock()
+
+	if len(el.logs) == 0 {
+		return
+	}
+
 	currDir, err := os.Getwd()
 	if err != nil {
 		log.Fatalf("Failed to get current directory: %v", err)
@@ -73,8 +80,6 @@ func (el *ErrorLogger) WriteToFile() {
 		log.Fatalf("Failed to write to file %s: %v", failedDevicesFile, err)
 	}
 
-	el.lock.Lock()
-	defer el.lock.Unlock()
 	for _, l := range el.logs {
 		errMsg := ""
 		if l.Error != nil {
