@@ -32,7 +32,7 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 	}
 	deviceIds := parseDeviceIds(csvData)
 
-	wp := NewWorkerPool(TotalWorkers)
+	wp := NewWorkerPool()
 	wp.Run()
 
 	for _, deviceId := range deviceIds {
@@ -89,7 +89,7 @@ func fetchConfigHistory(service *cbiotcore.Service, devices []*cbiotcore.Device)
 	deviceConfigs := make(map[string]interface{})
 
 	bar := getProgressBar(len(devices), "Gathering Device Config History...")
-	wp := NewWorkerPool(TotalWorkers)
+	wp := NewWorkerPool()
 	wp.Run()
 
 	for _, device := range devices {
@@ -133,7 +133,7 @@ func fetchGatewayBindings(service *cbiotcore.Service, devices []*cbiotcore.Devic
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 	bindings := make(map[string][]*cbiotcore.Device, len(gateways))
 	bindingMutex := sync.Mutex{}
-	wp := NewWorkerPool(TotalWorkers)
+	wp := NewWorkerPool()
 	wp.Run()
 	for _, gateway := range gateways {
 		wp.AddTask(func() {
@@ -185,7 +185,7 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gatewayBindings
 	parent := getCBRegistryPath()
 
 	bar := getProgressBar(len(gatewayBindings), "Migrating bound devices for gateways...")
-	wp := NewWorkerPool(TotalWorkers)
+	wp := NewWorkerPool()
 	wp.Run()
 
 	for gatewayID, boundDevices := range gatewayBindings {
@@ -241,7 +241,7 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 	successfulCreates := newCounter()
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
-	wp := NewWorkerPool(TotalWorkers)
+	wp := NewWorkerPool()
 	wp.Run()
 
 	for _, device := range devices {
