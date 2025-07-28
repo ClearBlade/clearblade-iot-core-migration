@@ -33,12 +33,15 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 	csvData := readCsvFile(csvFile)
 	deviceIds := parseDeviceIds(csvData)
 
+	fmt.Println("Device IDs: ", deviceIds)
+
 	wp := NewWorkerPool(TotalWorkers)
 	wp.Run()
 
 	for _, deviceId := range deviceIds {
+		dId := deviceId
 		wp.AddTask(func() {
-			device, err := service.Get(getCBSourceDevicePath(deviceId)).Do()
+			device, err := service.Get(getCBSourceDevicePath(dId)).Do()
 			if err != nil {
 				log.Fatalln("Error fetching csv device: ", err.Error())
 			}
@@ -134,13 +137,24 @@ func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []strin
 	return missingDeviceIds
 }
 
-func fetchConfigVersionHistory(device *cbiotcore.Device, _ context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.DeviceConfig {
+func fetchConfigVersionHistory(device *cbiotcore.Device, _ context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) map[string]interface{} {
 	req := service.ConfigVersions.List(getCBSourceDevicePath(device.Id))
 	resp, err := req.Do()
 	if err != nil {
 		log.Fatalln("fetchConfigVersionHistory ERROR: ", err)
 	}
-	return resp.DeviceConfigs
+
+	configs := make(map[string]interface{})
+
+	for _, config := range resp.DeviceConfigs {
+		configs[fmt.Sprint(config.Version)] = map[string]interface{}{
+			"cloudUpdateTime": config.CloudUpdateTime,
+			"deviceAckTime":   config.DeviceAckTime,
+			"binaryData":      base64.StdEncoding.EncodeToString([]byte(config.BinaryData)),
+		}
+	}
+
+	return configs
 }
 
 func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDeviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, cbRegistryService *cbiotcore.ProjectsLocationsRegistriesService) {
@@ -346,6 +360,8 @@ func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Dev
 			resultC <- ErrorLog{}
 		})
 	}
+
+	wp.Wait()
 
 	for i := 0; i < len(devices); i++ {
 		res := <-resultC

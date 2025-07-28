@@ -103,7 +103,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	sourceRegDetails, err := cbiotcore.GetRegistryCredentials(Args.cbSourceRegistryName, Args.cbSourceRegion, sourceService)
+	sourceRegDetails, _ := cbiotcore.GetRegistryCredentials(Args.cbSourceRegistryName, Args.cbSourceRegion, sourceService)
 
 	if sourceRegDetails.SystemKey == "" {
 		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
