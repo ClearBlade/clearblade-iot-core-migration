@@ -6,54 +6,71 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	cbiotcore "github.com/clearblade/go-iot"
+	"github.com/k0kubun/go-ansi"
+	"github.com/schollz/progressbar/v3"
 	"log"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
-
-	cbiotcore "github.com/clearblade/go-iot"
-	"github.com/k0kubun/go-ansi"
-	"github.com/schollz/progressbar/v3"
 )
 
-func fileExists(filename string) bool {
-	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
-		fmt.Println("File path does not exists: ", filename, "Error: ", err)
-		return false
-	}
+var (
+	colorCyan   = "\033[36m"
+	colorReset  = "\033[0m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorRed    = "\033[31m"
+)
 
-	return true
+func init() {
+	if runtime.GOOS == "windows" {
+		colorCyan = ""
+		colorReset = ""
+		colorGreen = ""
+		colorYellow = ""
+		colorRed = ""
+	}
 }
 
-func readCsvFile(filePath string) [][]string {
-	fmt.Println(string(colorGreen), "\n\u2713 Reading CSV file", string(colorReset))
+func printfColored(color, format string, args ...interface{}) {
+	if len(format) == 0 {
+		return
+	}
+	if format[len(format)-1] != '\n' {
+		format += "\n"
+	}
+	fmt.Printf(color+format+colorReset, args...)
+}
+
+func readCsvFile(filePath string) ([][]string, error) {
+	printfColored(colorGreen, "\u2713 Reading CSV file at %s", filePath)
 	f, err := os.Open(filePath)
 	if err != nil {
-		log.Fatalln("Unable to read input file: ", filePath, err)
+		return nil, fmt.Errorf("failed to open file: %w", err)
 	}
 	defer f.Close()
 
 	records, err := csv.NewReader(f).ReadAll()
 	if err != nil {
-		log.Fatalln("Unable to parse file as CSV for: ", filePath, err)
+		return nil, fmt.Errorf("failed to parse CSV: %w", err)
 	}
 
-	return records
+	return records, nil
 }
 
 func parseDeviceIds(rows [][]string) []string {
-	fmt.Println(string(colorGreen), "\n\u2713 Parsing device IDs", string(colorReset))
+	printfColored(colorGreen, "\u2713 Parsing device IDs")
 	var deviceIDs []string
 
 	if len(rows) == 0 {
-		log.Fatal("empty CSV")
+		log.Fatal("empty CSV file")
 	}
 
 	header := rows[0]
-	var idx int = -1
+	idx := -1
 	for i, name := range header {
 		if name == "deviceId" {
 			idx = i
@@ -71,21 +88,6 @@ func parseDeviceIds(rows [][]string) []string {
 	}
 
 	return deviceIDs
-}
-
-func getGCPProjectID(filePath string) string {
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Fatalln("Error when opening json file: ", err)
-	}
-
-	var payload GCPConfig
-	err = json.Unmarshal(content, &payload)
-	if err != nil {
-		log.Fatalln("Error during Unmarshal(): ", err)
-	}
-
-	return payload.Project_id
 }
 
 func getCBProjectID(filePath string) string {
@@ -132,21 +134,39 @@ func readInput(msg string) (string, error) {
 		return "", err
 	}
 
-	// remove the delimeter from the string
+	// remove the delimiter from the string
 	input = strings.TrimSuffix(input, "\n")
 	input = strings.TrimSuffix(input, "\r")
 
 	return input, nil
 }
 
-func getProgressBar(total int, description string) *progressbar.ProgressBar {
-	description = string(colorYellow) + description + string(colorReset)
+type progressBar struct {
+	*progressbar.ProgressBar
+}
+
+func (pb *progressBar) Add(num int) {
+	if err := pb.ProgressBar.Add(num); err != nil {
+		log.Printf("Unable to add %d to progress bar: %s\n", num, err)
+	}
+}
+
+func (pb *progressBar) Finish() {
+	if err := pb.ProgressBar.Finish(); err != nil {
+		log.Printf("Unable to finish progress bar: %s\n", err)
+	}
+}
+
+func getProgressBar(total int, description string) *progressBar {
+	description = colorYellow + description + colorReset
 	bar := progressbar.NewOptions(total,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionSetWidth(30),
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
+		progressbar.OptionSetPredictTime(true),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
 			SaucerHead:    "[green]>[reset]",
@@ -155,18 +175,56 @@ func getProgressBar(total int, description string) *progressbar.ProgressBar {
 			BarEnd:        "]",
 		}))
 
-	return bar
+	return &progressBar{bar}
 }
 
-func getSpinner(description string) *progressbar.ProgressBar {
-	description = string(colorYellow) + description + string(colorReset)
+func getSpinner(description string) *progressBar {
+	description = colorYellow + description + colorReset
 	bar := progressbar.NewOptions(-1,
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionSetWidth(30),
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
 	)
-	return bar
+	return &progressBar{bar}
+}
+
+type PaginatedRequest interface {
+	Do() (*cbiotcore.ListDevicesResponse, error)
+	PageToken(token string) *cbiotcore.ProjectsLocationsRegistriesDevicesListCall
+}
+
+func paginatedFetch(req PaginatedRequest, spinnerDesc string) ([]*cbiotcore.Device, error) {
+	var spinner *progressBar
+	if spinnerDesc != "" {
+		spinner = getSpinner(spinnerDesc)
+		defer spinner.Finish()
+	}
+
+	resp, err := req.Do()
+	if err != nil {
+		return nil, err
+	}
+
+	var allDevices []*cbiotcore.Device
+	allDevices = append(allDevices, resp.Devices...)
+	if spinner != nil {
+		spinner.Add(len(resp.Devices))
+	}
+
+	for resp.NextPageToken != "" {
+		resp, err = req.PageToken(resp.NextPageToken).Do()
+		if err != nil {
+			return nil, err
+		}
+		allDevices = append(allDevices, resp.Devices...)
+		if spinner != nil {
+			spinner.Add(len(resp.Devices))
+		}
+	}
+
+	return allDevices, nil
 }
 
 func getAbsPath(path string) (string, error) {
@@ -189,7 +247,6 @@ func getAbsPath(path string) (string, error) {
 }
 
 func transform(device *cbiotcore.Device) *cbiotcore.Device {
-
 	parsedCreds := make([]*cbiotcore.DeviceCredential, 0)
 	if Args.updatePublicKeys {
 		for _, creds := range device.Credentials {
@@ -234,51 +291,7 @@ func transform(device *cbiotcore.Device) *cbiotcore.Device {
 	return cbDevice
 }
 
-func getTimeString(timestamp time.Time) string {
-	if timestamp.Unix() == 0 {
-		return ""
-	}
-	return timestamp.Format(time.RFC3339)
-}
-
-func generateFailedDevicesCSV(errorLogs []ErrorLog) error {
-	currDir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
-	failedDevicesFile := fmt.Sprint(currDir, "/failed_devices_", time.Now().Format("2006-01-02T15:04:05"), ".csv")
-
-	if runtime.GOOS == "windows" {
-		failedDevicesFile = fmt.Sprint(currDir, "\\failed_devices_", time.Now().Format("2006-01-02T15-04-05"), ".csv")
-	}
-
-	f, err := os.OpenFile(failedDevicesFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return err
-	}
-
-	defer f.Close()
-
-	fileContents := "context,error,deviceId\n"
-	for i := 0; i < len(errorLogs); i++ {
-		errMsg := ""
-		if errorLogs[i].Error != nil {
-			errMsg = errorLogs[i].Error.Error()
-		}
-		fileContents += fmt.Sprintf(`%s,"%s",%s`, errorLogs[i].Context, errMsg, errorLogs[i].DeviceId)
-		fileContents += "\n"
-	}
-
-	if _, err := f.WriteString(fileContents); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func ExportDeviceBatches(devices []*cbiotcore.Device, batchSize int64) {
-
 	batches := make(map[int][]*cbiotcore.Device)
 
 	for i, device := range devices {
@@ -318,5 +331,4 @@ func WriteBatchFile(devices []*cbiotcore.Device, filename string) {
 	if _, err := f.WriteString(fileContents); err != nil {
 		log.Fatalln("Could not write to file: ", err)
 	}
-
 }

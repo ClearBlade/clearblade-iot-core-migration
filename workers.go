@@ -15,9 +15,9 @@ type workerPool struct {
 }
 
 // NewWorkerPool will create an instance of WorkerPool.
-func NewWorkerPool(maxWorkers int) WorkerPool {
+func NewWorkerPool() WorkerPool {
 	wp := &workerPool{
-		maxWorkers:  maxWorkers,
+		maxWorkers:  Args.workerPoolSize,
 		queuedTaskC: make(chan func()),
 	}
 
