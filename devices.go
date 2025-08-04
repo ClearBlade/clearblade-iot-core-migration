@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,32 +12,47 @@ import (
 	"strings"
 	"sync"
 
-	gcpiotpb "cloud.google.com/go/iot/apiv1/iotpb"
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
-func fetchDevicesFromClearBladeIotCore(ctx context.Context, service *cbiotcore.Service) ([]*cbiotcore.Device, map[string]interface{}) {
-	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
-	csvDevices := []*cbiotcore.Device{}
-	if Args.devicesCsvFile != "" {
-		csvDevices = fetchDevicesFromCSV(deviceService, Args.devicesCsvFile)
+func fetchDevices(service *cbiotcore.Service) []*cbiotcore.Device {
+	checkpoint := GetCheckpoint()
+
+	if checkpoint.IsPhaseCompleted(PhaseDeviceFetch) {
+		printfColored(colorGreen, "\u2713 Device fetch phase already completed, loading from checkpoint")
+		return checkpoint.GetFetchedDevices()
 	}
-	return fetchAllDevicesFromClearBlade(ctx, deviceService, csvDevices)
+
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+	if Args.devicesCsvFile != "" {
+		return fetchDevicesFromCSV(deviceService, Args.devicesCsvFile)
+	}
+	return fetchAllDevices(deviceService)
 }
 
 func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesService, csvFile string) []*cbiotcore.Device {
 	var deviceMutex sync.Mutex
 	var devices []*cbiotcore.Device
 
-	csvData := readCsvFile(csvFile)
+	checkpoint := GetCheckpoint()
+	csvData, err := readCsvFile(csvFile)
+	if err != nil {
+		log.Fatal(err)
+	}
 	deviceIds := parseDeviceIds(csvData)
 
-	fmt.Println("Device IDs: ", deviceIds)
+	remainingDeviceIds := checkpoint.GetUnfetchedDeviceIds(deviceIds)
+	if len(remainingDeviceIds) == 0 {
+		printfColored(colorGreen, " \u2713 All CSV devices already fetched from checkpoint")
+		return checkpoint.GetFetchedDevices()
+	}
 
-	wp := NewWorkerPool(TotalWorkers)
+	bar := getProgressBar(len(remainingDeviceIds), "Fetching remaining devices from source registry...")
+	defer bar.Finish()
+	wp := NewWorkerPool()
 	wp.Run()
 
-	for _, deviceId := range deviceIds {
+	for _, deviceId := range remainingDeviceIds {
 		dId := deviceId
 		wp.AddTask(func() {
 			device, err := service.Get(getCBSourceDevicePath(dId)).Do()
@@ -48,100 +62,77 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 			deviceMutex.Lock()
 			defer deviceMutex.Unlock()
 			devices = append(devices, device)
+			checkpoint.AddFetchedDevice(device)
+			bar.Add(1)
 		})
 	}
 
 	wp.Wait()
-
+	checkpoint.SetPhase(PhaseDeviceMigrate)
+	printfColored(colorGreen, " \u2713 Done fetching devices")
 	return devices
 }
 
-func fetchAllDevicesFromClearBlade(ctx context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService, csvDevices []*cbiotcore.Device) ([]*cbiotcore.Device, map[string]interface{}) {
-	var devices []*cbiotcore.Device
-	configMutex := sync.Mutex{}
-	deviceConfigs := make(map[string]interface{})
-	fmt.Println()
-	if len(csvDevices) != 0 {
-		devices = csvDevices
-	} else {
-		spinner := getSpinner("Fetching all devices from registry...")
-		req := service.List(getCBSourceRegistryPath()).PageSize(int64(1000))
-		resp, err := req.Do()
-		if err != nil {
-			log.Fatalln("Error fetching all devices: ", err)
-		}
+func fetchAllDevices(service *cbiotcore.ProjectsLocationsRegistriesDevicesService) []*cbiotcore.Device {
+	checkpoint := GetCheckpoint()
+	req := service.List(getCBSourceRegistryPath()).PageSize(Args.pageSize)
+	devices, err := paginatedFetch(req, "Fetching all devices from source registry...")
+	if err != nil {
+		log.Fatalln("Error fetching all devices: ", err)
+	}
 
-		for resp.NextPageToken != "" {
-			devices = append(devices, resp.Devices...)
+	checkpoint.SetTotalDevices(len(devices))
+	for _, device := range devices {
+		checkpoint.AddFetchedDevice(device)
+	}
+	checkpoint.SetPhase(PhaseDeviceMigrate)
 
-			if err := spinner.Add(1); err != nil {
-				log.Fatalln("Unable to add to spinner: ", err)
-			}
+	printfColored(colorGreen, " \u2713 Done fetching devices")
+	return devices
+}
 
-			resp, err = req.PageToken(resp.NextPageToken).Do()
+func fetchConfigHistory(service *cbiotcore.Service, devices []*cbiotcore.Device) map[string]interface{} {
+	if !Args.configHistory {
+		return nil
+	}
 
+	checkpoint := GetCheckpoint()
+	remainingDevices := checkpoint.GetRemainingDevicesForConfig(devices)
+	if len(remainingDevices) == 0 {
+		printfColored(colorGreen, "\u2713 All device config history already fetched")
+		return checkpoint.GetConfigHistory()
+	}
+
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+
+	bar := getProgressBar(len(remainingDevices), "Fetching remaining device config history from source registry...")
+	defer bar.Finish()
+
+	wp := NewWorkerPool()
+	wp.Run()
+
+	for _, device := range remainingDevices {
+		wp.AddTask(func() {
+			dConfig, err := fetchConfigVersionHistory(device, deviceService)
 			if err != nil {
-				log.Fatalln("Error fetching all devices: ", err.Error())
-				break
+				log.Fatalln("Error fetching config history: ", err)
 			}
-		}
 
-		fmt.Println(string(colorGreen), "\n\u2713 Done fetching devices", string(colorReset))
-
-		if err == nil {
-			devices = append(devices, resp.Devices...)
-		}
+			checkpoint.AddProcessedConfig(device.Id, dConfig)
+			bar.Add(1)
+		})
 	}
 
-	if Args.configHistory {
-		fmt.Println("")
-		bar := getProgressBar(len(devices), "Gathering Device Config History...")
-		wp := NewWorkerPool(TotalWorkers)
-		wp.Run()
-
-		for _, device := range devices {
-			d := device
-			wp.AddTask(func() {
-				dConfig := fetchConfigVersionHistory(d, ctx, service)
-				configMutex.Lock()
-				deviceConfigs[d.Id] = dConfig
-				configMutex.Unlock()
-
-				if err := bar.Add(1); err != nil {
-					log.Fatalln("Unable to add to progressbar:", err)
-				}
-			})
-
-		}
-
-		wp.Wait()
-		fmt.Println(string(colorGreen), "\n\u2713 Done fetching device configuration history", string(colorReset))
-
-	}
-	return devices, deviceConfigs
+	wp.Wait()
+	printfColored(colorGreen, " \u2713 Done fetching device configuration history")
+	return checkpoint.GetConfigHistory()
 }
 
-func getMissingDeviceIds(devices []*gcpiotpb.Device, deviceIds []string) []string {
-	missingDeviceIds := make([]string, 0)
-	for _, id := range deviceIds {
-		found := false
-		for _, device := range devices {
-			if device.Id == id {
-				found = true
-			}
-		}
-		if !found {
-			missingDeviceIds = append(missingDeviceIds, id)
-		}
-	}
-	return missingDeviceIds
-}
-
-func fetchConfigVersionHistory(device *cbiotcore.Device, _ context.Context, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) map[string]interface{} {
+func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.ProjectsLocationsRegistriesDevicesService) (map[string]interface{}, error) {
 	req := service.ConfigVersions.List(getCBSourceDevicePath(device.Id))
 	resp, err := req.Do()
 	if err != nil {
-		log.Fatalln("fetchConfigVersionHistory ERROR: ", err)
+		return nil, err
 	}
 
 	configs := make(map[string]interface{})
@@ -154,17 +145,51 @@ func fetchConfigVersionHistory(device *cbiotcore.Device, _ context.Context, serv
 		}
 	}
 
-	return configs
+	return configs, nil
+}
+
+func fetchGatewayBindings(service *cbiotcore.Service, devices []*cbiotcore.Device) map[string][]*cbiotcore.Device {
+	var gateways []*cbiotcore.Device
+	for _, device := range devices {
+		if device.GatewayConfig.GatewayType == "GATEWAY" {
+			gateways = append(gateways, device)
+		}
+	}
+	if len(gateways) == 0 {
+		return nil
+	}
+	bar := getProgressBar(len(devices), "Fetching gateways from source registry...")
+	defer bar.Finish()
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+	bindings := make(map[string][]*cbiotcore.Device, len(gateways))
+	bindingMutex := sync.Mutex{}
+	wp := NewWorkerPool()
+	wp.Run()
+	for _, gateway := range gateways {
+		wp.AddTask(func() {
+			req := deviceService.List(getCBSourceRegistryPath()).GatewayListOptionsAssociationsGatewayId(gateway.Id).PageSize(Args.pageSize)
+			allBoundDevices, err := paginatedFetch(req, "")
+			if err != nil {
+				log.Fatalf("Error fetching gateways: %s\n", err)
+			}
+
+			bindingMutex.Lock()
+			defer bindingMutex.Unlock()
+			bindings[gateway.Id] = allBoundDevices
+			bar.Add(1)
+		})
+	}
+	wp.Wait()
+	return bindings
 }
 
 func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDeviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, cbRegistryService *cbiotcore.ProjectsLocationsRegistriesService) {
 	// fetch bound devices
-	// if gateway doesn't exists -> do error checking and return
+	// if gateway doesn't exist -> do error checking and return
 	// if gateway exists, but no bound devices -> do check and return
 	// if gateway exists and bound devices present -> unbind all devices & delete gateway
 
 	boundDevices, err := cbDeviceService.List(parent).GatewayListOptionsAssociationsGatewayId(gateway).Do()
-
 	if err != nil {
 		log.Fatalln("Unable to fetch boundDevices for existing gateways from CB registry: ", err.Error())
 	}
@@ -180,87 +205,63 @@ func unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway, parent string, cbDevi
 		}).Do()
 
 		if err != nil {
-			fmt.Printf("Unable to unbind device %s from gateway %s. Reason: %s", boundDevices.Devices[i].Id, gateway, err.Error())
+			log.Printf("Unable to unbind device %s from gateway %s. Reason: %s\n", boundDevices.Devices[i].Id, gateway, err.Error())
 		}
 	}
 }
 
-func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *cbiotcore.Service, sourceDevices []*cbiotcore.Device, errorLogs []ErrorLog) {
-	gateways := make([]*cbiotcore.Device, 0)
-	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
-	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
-	sourceDeviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(sourceService)
+func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, gatewayBindings map[string][]*cbiotcore.Device) {
+	checkpoint := GetCheckpoint()
 
-	var errorLogMutex sync.Mutex
-
-	// First identify all gateways
-	for i := 0; i < len(sourceDevices); i++ {
-		if sourceDevices[i].GatewayConfig != nil && sourceDevices[i].GatewayConfig.GatewayType == "GATEWAY" {
-			gateways = append(gateways, sourceDevices[i])
-		}
-	}
-
-	if len(gateways) == 0 {
+	if checkpoint.IsPhaseCompleted(PhaseGatewayBinding) {
+		printfColored(colorGreen, "\u2713 Gateway binding phase already completed")
 		return
 	}
 
-	fmt.Println()
-	bar := getProgressBar(len(gateways), "Migrating bound devices for gateways...")
-	wp := NewWorkerPool(TotalWorkers)
-	wp.Run()
+	if len(gatewayBindings) == 0 {
+		checkpoint.SetPhase(PhaseComplete)
+		return
+	}
+
+	remainingGateways := checkpoint.GetUnprocessedGateways(gatewayBindings)
+
+	if len(remainingGateways) == 0 {
+		printfColored(colorGreen, "\u2713 All gateways already processed")
+		checkpoint.SetPhase(PhaseComplete)
+		return
+	}
+
+	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
+	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
 	parent := getCBRegistryPath()
-	sourceParent := getCBSourceRegistryPath()
-	for _, gateway := range gateways {
 
+	bar := getProgressBar(len(remainingGateways), "Migrating remaining bound devices for gateways to destination registry...")
+	defer bar.Finish()
+	wp := NewWorkerPool()
+	wp.Run()
+
+	for _, gatewayID := range remainingGateways {
+		boundDevices := gatewayBindings[gatewayID]
 		wp.AddTask(func() {
-			if barErr := bar.Add(1); barErr != nil {
-				log.Fatalln("Unable to add to progressbar: ", barErr)
-			}
 
 			// First unbind any existing devices from the target gateway
-			unbindFromGatewayIfAlreadyExistsInCBRegistry(gateway.Id, parent, deviceService, registryService)
-
-			// Fetch devices bound to this specific gateway from source
-			boundDevices, err := sourceDeviceService.List(sourceParent).GatewayListOptionsAssociationsGatewayId(gateway.Id).PageSize(10000).Do()
-			if err != nil {
-				errorLogMutex.Lock()
-				defer errorLogMutex.Unlock()
-				errorLogs = append(errorLogs, ErrorLog{
-					Context:  "Get bound devices for gateway",
-					Error:    err,
-					DeviceId: gateway.Id,
-				})
-
-				return
-			}
+			unbindFromGatewayIfAlreadyExistsInCBRegistry(gatewayID, parent, deviceService, registryService)
 
 			// Process each bound device
-			for _, device := range boundDevices.Devices {
+			for _, device := range boundDevices {
 				// Check if device exists in target registry
 				_, err := deviceService.Get(getCBDevicePath(device.Id)).Do()
 				if err != nil {
 					if !strings.Contains(err.Error(), "Error 404") {
-						errorLogMutex.Lock()
-						defer errorLogMutex.Unlock()
-						errorLogs = append(errorLogs, ErrorLog{
-							Context:  "Create Bound Device",
-							Error:    err,
-							DeviceId: device.Id,
-						})
+						errorLogger.AddError("Get Bound Device", device.Id, err)
 						continue
 					}
 
 					// Create device if it doesn't exist
 					_, createErr := deviceService.Create(parent, transform(device)).Do()
 					if createErr != nil {
-						errorLogMutex.Lock()
-						defer errorLogMutex.Unlock()
-						errorLogs = append(errorLogs, ErrorLog{
-							Context:  "Create bound device",
-							Error:    createErr,
-							DeviceId: device.Id,
-						})
+						errorLogger.AddError("Create Bound Device", device.Id, createErr)
 						continue
 					}
 				}
@@ -268,128 +269,96 @@ func migrateBoundDevicesToClearBlade(service *cbiotcore.Service, sourceService *
 				// Bind the device to the gateway
 				bindDeviceResp, err := registryService.BindDeviceToGateway(parent, &cbiotcore.BindDeviceToGatewayRequest{
 					DeviceId:  device.Id,
-					GatewayId: gateway.Id,
+					GatewayId: gatewayID,
 				}).Do()
 
 				if err != nil {
-					errorLogMutex.Lock()
-					defer errorLogMutex.Unlock()
-					errorLogs = append(errorLogs, ErrorLog{
-						Context:  "Bind device to gateway",
-						Error:    err,
-						DeviceId: device.Id,
-					})
+					errorLogger.AddError("Bind device to gateway", device.Id, err)
 					continue
 				}
 
 				if bindDeviceResp.ServerResponse.HTTPStatusCode != http.StatusOK {
-					errorLogMutex.Lock()
-					defer errorLogMutex.Unlock()
-					errorLogs = append(errorLogs, ErrorLog{
-						Context:  "Bind device to gateway non-200 status",
-						Error:    err,
-						DeviceId: device.Id,
-					})
+					errorLogger.AddError("Bind device to gateway non-200 status", device.Id, err)
 					continue
 				}
 			}
+
+			checkpoint.AddProcessedGateway(gatewayID)
+			bar.Add(1)
 		})
 
 	}
 	wp.Wait()
-	fmt.Println(string(colorGreen), "\n\u2713 Done migrating bound devices for gateways", string(colorReset))
-
+	checkpoint.SetPhase(PhaseComplete)
+	printfColored(colorGreen, "\u2713 Done migrating bound devices for gateways")
 }
 
-func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device, deviceConfigs map[string]interface{}, errorLogs []ErrorLog) []ErrorLog {
-	fmt.Println("")
-	bar := getProgressBar(len(devices), "Migrating Devices and Gateways...")
-	successfulCreates := 0
+func addDevicesToClearBlade(service *cbiotcore.Service, devices []*cbiotcore.Device) int {
+	checkpoint := GetCheckpoint()
 
+	if checkpoint.IsPhaseCompleted(PhaseDeviceMigrate) {
+		printfColored(colorGreen, "\u2713 Device migration phase already completed")
+		return len(checkpoint.DevicesMigrated)
+	}
+
+	remainingDevices := checkpoint.GetRemainingDevicesForMigration(devices)
+	if len(remainingDevices) == 0 {
+		printfColored(colorGreen, "\u2713 All devices already migrated")
+		checkpoint.SetPhase(PhaseConfigHistory)
+		return len(checkpoint.DevicesMigrated)
+	}
+
+	bar := getProgressBar(len(remainingDevices), "Migrating remaining devices and gateways to destination registry...")
+	defer bar.Finish()
+	successfulCreates := newCounter()
+	successfulCreates.SetCount(len(checkpoint.DevicesMigrated))
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 
-	wp := NewWorkerPool(TotalWorkers)
+	wp := NewWorkerPool()
 	wp.Run()
 
-	resultC := make(chan ErrorLog, len(devices))
-
-	for i := 0; i < len(devices); i++ {
-		idx := i
-		if barErr := bar.Add(1); barErr != nil {
-			log.Fatalln("Unable to add to progressbar: ", barErr)
-		}
+	for _, device := range remainingDevices {
 		wp.AddTask(func() {
-			resp, err := createDevice(deviceService, devices[idx])
-			// Create Device Successful
+			resp, err := deviceService.Create(getCBRegistryPath(), transform(device)).Do()
 			if err == nil {
-				resultC <- ErrorLog{}
+				// Create Device Successful
+				successfulCreates.Increment()
+				checkpoint.AddMigratedDevice(device.Id)
+				bar.Add(1)
 				return
 			}
 
 			// Checking if device exists - status code 409
 			if !strings.Contains(err.Error(), "Error 409") {
-				resultC <- ErrorLog{
-					DeviceId: devices[idx].Id,
-					Context:  "Error when Creating Device",
-					Error:    err,
-				}
+				errorLogger.AddError("Create Device", device.Id, err)
 				return
 			}
 
 			// Checking if network error
 			if resp != nil && resp.ServerResponse.HTTPStatusCode != http.StatusConflict {
-				resultC <- ErrorLog{
-					DeviceId: devices[idx].Id,
-					Context:  "Error when Creating Device",
-					Error:    err,
-				}
+				errorLogger.AddError("Create Device", device.Id, err)
 				return
 			}
 
 			// If Device exists, patch it
-			err = updateDevice(deviceService, devices[idx])
-
+			err = updateDevice(deviceService, device)
 			if err != nil {
-				resultC <- ErrorLog{
-					DeviceId: devices[idx].Id,
-					Context:  "Error when Patching Device",
-					Error:    err,
-				}
+				errorLogger.AddError("Patch Device", device.Id, err)
 				return
 			}
-			resultC <- ErrorLog{}
+
+			successfulCreates.Increment()
+			checkpoint.AddMigratedDevice(device.Id)
+			bar.Add(1)
 		})
 	}
 
 	wp.Wait()
-
-	for i := 0; i < len(devices); i++ {
-		res := <-resultC
-		if res.Error != nil {
-			errorLogs = append(errorLogs, res)
-		} else {
-			successfulCreates += 1
-		}
-	}
-
-	if len(deviceConfigs) != 0 {
-		err := updateConfigHistory(service, deviceConfigs)
-		if err != nil {
-			fmt.Println(string(colorRed), "\n\n\u2715 Unable to update config version history! Reason: ", err, string(colorReset))
-		}
-	}
-
-	if successfulCreates == len(devices) {
-		fmt.Println(string(colorGreen), "\n\n\u2713 Migrated", successfulCreates, "/", len(devices), "devices and gateways!", string(colorReset))
-	} else {
-		fmt.Println(string(colorRed), "\n\n\u2715 Failed to migrate all devices. Migrated", successfulCreates, "/", len(devices), "devices!", string(colorReset))
-	}
-
-	return errorLogs
+	checkpoint.SetPhase(PhaseConfigHistory)
+	return successfulCreates.Count()
 }
 
 func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) error {
-
 	patchCall := deviceService.Patch(getCBDevicePath(device.Id), transform(device))
 
 	if Args.updatePublicKeys {
@@ -399,7 +368,6 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	}
 
 	_, err := patchCall.Do()
-
 	if err != nil {
 		return err
 	}
@@ -412,7 +380,6 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 
 		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBDevicePath(device.Id), config)
 		_, err := updateConfigCall.Do()
-
 		if err != nil {
 			return err
 		}
@@ -421,29 +388,32 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	}
 
 	return nil
-
 }
 
-func createDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesService, device *cbiotcore.Device) (*cbiotcore.Device, error) {
-	call := deviceService.Create(getCBRegistryPath(), transform(device))
-	createDevResp, err := call.Do()
-	return createDevResp, err
-}
+func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string][]*cbiotcore.DeviceConfig) error {
+	checkpoint := GetCheckpoint()
 
-func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
+	if checkpoint.IsPhaseCompleted(PhaseConfigHistory) {
+		printfColored(colorGreen, "\u2713 Config history phase already completed")
+		return nil
+	}
+
+	if len(deviceConfigs) == 0 {
+		checkpoint.SetPhase(PhaseGatewayBinding)
+		return nil
+	}
 
 	creds, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
-
 	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}
 	postBody, _ := json.Marshal(transformedDeviceConfigHistory)
 	responseBody := bytes.NewBuffer(postBody)
 
 	url := creds.Url + "/api/v/1/code/" + creds.SystemKey + "/devicesConfigHistoryUpdate"
 	req, err := http.NewRequest("POST", url, responseBody)
-	req.Header.Set("ClearBlade-UserToken", creds.Token)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("ClearBlade-UserToken", creds.Token)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -462,7 +432,6 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]in
 	var jsonMap map[string]interface{}
 
 	if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
-		// log.Fatalln("Unable to unmarshall JSON: ", err)
 		return errors.New(jsonStr)
 	}
 
@@ -470,52 +439,64 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]in
 		return errors.New(jsonStr)
 	}
 
+	checkpoint.SetPhase(PhaseGatewayBinding)
 	return nil
 }
 
 func deleteAllFromCbRegistry(service *cbiotcore.Service) {
-	//Delete all devices
 	parent := getCBRegistryPath()
 	cbDeviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
 	registryService := cbiotcore.NewProjectsLocationsRegistriesService(service)
 
-	spinner := getSpinner("Cleaning Up ClearBlade Registry...")
-
-	//FetchGateways
-	resp, err := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").PageSize(10000).Do()
-
+	req := cbDeviceService.List(parent).GatewayListOptionsGatewayType("GATEWAY").PageSize(Args.pageSize)
+	allGateways, err := paginatedFetch(req, "Fetching all gateways from destination registry...")
 	if err != nil {
 		log.Fatalln("Unable to list gateways from CB registry. Reason: ", err.Error())
 	}
+	printfColored(colorGreen, " \u2713 Done fetching gateways")
 
-	if len(resp.Devices) == 0 {
-		return
-	}
-
-	for _, device := range resp.Devices {
-		//Unbind devices from all gateways
-		unbindFromGatewayIfAlreadyExistsInCBRegistry(device.Id, parent, cbDeviceService, registryService)
-		//Delete all gateways
-		if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
-			log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())
+	func() {
+		if len(allGateways) == 0 {
+			return
 		}
-		if err := spinner.Add(1); err != nil {
-			log.Fatalln("Unable to add to spinner: ", err)
+		progress := getProgressBar(len(allGateways), "Deleting gateways...")
+		defer progress.Finish()
+		for _, device := range allGateways {
+			//Unbind devices from all gateways
+			unbindFromGatewayIfAlreadyExistsInCBRegistry(device.Id, parent, cbDeviceService, registryService)
+			//Delete all gateways
+			if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
+				log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())
+			}
+			progress.Add(1)
 		}
-	}
+	}()
+	printfColored(colorGreen, " \u2713 Done deleting gateways")
 
-	resp, err = cbDeviceService.List(parent).PageSize(10000).Do()
+	req = cbDeviceService.List(parent).PageSize(Args.pageSize)
+	allDevices, err := paginatedFetch(req, "Fetching all devices from destination registry...")
 	if err != nil {
 		log.Fatalln("Unable to list devices from CB registry. Reason: ", err.Error())
 	}
+	printfColored(colorGreen, " \u2713 Done fetching devices")
 
-	for _, device := range resp.Devices {
-		//Delete all devices
-		if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
-			log.Fatalln("Unable to delete device from CB Registry: Reason: ", err.Error())
+	func() {
+		if len(allDevices) == 0 {
+			return
 		}
-		if err := spinner.Add(1); err != nil {
-			log.Fatalln("Unable to add to spinner: ", err)
+		wp := NewWorkerPool()
+		wp.Run()
+		progress := getProgressBar(len(allDevices), "Deleting devices from destination registry...")
+		defer progress.Finish()
+		for _, device := range allDevices {
+			wp.AddTask(func() {
+				if _, err := cbDeviceService.Delete(getCBDevicePath(device.Id)).Do(); err != nil {
+					log.Fatalf("Unable to delete device from destination registry: %s\n", err)
+				}
+				progress.Add(1)
+			})
 		}
-	}
+		wp.Wait()
+	}()
+	printfColored(colorGreen, " \u2713 Done deleting devices")
 }

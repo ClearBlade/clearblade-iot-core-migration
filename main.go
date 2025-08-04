@@ -7,23 +7,17 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"runtime"
 
 	cbiotcore "github.com/clearblade/go-iot"
 )
 
-const TotalWorkers = 25
-
-var (
-	Args DeviceMigratorArgs
+const (
+	cbIotCoreMigrationVersion = "v1.7.0"
 )
 
 var (
-	colorCyan   = "\033[36m"
-	colorReset  = "\033[0m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorRed    = "\033[31m"
+	Args        DeviceMigratorArgs
+	errorLogger = NewErrorLogger()
 )
 
 type DeviceMigratorArgs struct {
@@ -45,13 +39,18 @@ type DeviceMigratorArgs struct {
 	silentMode        bool
 	cleanupCbRegistry bool
 	exportBatchSize   int64
+	workDir           string
+	workerPoolSize    int
+	pageSize          int64
 }
 
 func initMigrationFlags() {
+	// Destination
 	flag.StringVar(&Args.cbServiceAccount, "cbServiceAccount", "", "Path to a ClearBlade service account file for the destination registry. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
 	flag.StringVar(&Args.cbRegistryName, "cbRegistryName", "", "ClearBlade Destination Registry Name (Required)")
 	flag.StringVar(&Args.cbRegistryRegion, "cbRegistryRegion", "", "ClearBlade Destination Registry Region (Required)")
 
+	// Source
 	flag.StringVar(&Args.cbSourceServiceAccount, "cbSourceServiceAccount", "", "Path to a ClearBlade service account file for the source registry. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project (Required)")
 	flag.StringVar(&Args.cbSourceRegistryName, "cbSourceRegistryName", "", "ClearBlade Source Registry Name (Required)")
 	flag.StringVar(&Args.cbSourceRegion, "cbSourceRegion", "", "ClearBlade Source Registry Region (Required)")
@@ -62,106 +61,19 @@ func initMigrationFlags() {
 	flag.BoolVar(&Args.updatePublicKeys, "updatePublicKeys", true, "Replace existing keys of migrated devices. Default is true")
 	flag.BoolVar(&Args.skipConfig, "skipConfig", false, "Skips migrating latest config. Default is false")
 	flag.BoolVar(&Args.silentMode, "silentMode", false, "Run this tool in silent (non-interactive) mode. Default is false")
-	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Cleans up all contents from the existing CB registry prior to migration")
-	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of csvs")
+	flag.BoolVar(&Args.cleanupCbRegistry, "cleanupCbRegistry", false, "Deletes all contents from the destination CB registry prior to migration")
+	flag.Int64Var(&Args.exportBatchSize, "exportBatchSize", 0, "Exports devices to the supplied number of CSVs")
+	flag.StringVar(&Args.workDir, "workDir", "./migration_data", "Directory to store migration data")
+	flag.IntVar(&Args.workerPoolSize, "workerPoolSize", 100, "Number of workers used to perform migration")
+	flag.Int64Var(&Args.pageSize, "pageSize", 1000, "Page size for API calls when fetching devices/gateways")
 
-}
-
-func main() {
-
-	// Init & Parse migration Flags
-	initMigrationFlags()
 	flag.Parse()
-
-	if len(os.Args) == 1 {
-		log.Fatalln("No flags supplied. Use clearblade-iot-core-migration --help to view details.")
-	}
-
-	if os.Args[1] == "version" {
-		fmt.Printf("%s\n", cbIotCoreMigrationVersion)
-		os.Exit(0)
-	}
-
-	if runtime.GOOS == "windows" {
-		colorCyan = ""
-		colorReset = ""
-		colorGreen = ""
-		colorYellow = ""
-		colorRed = ""
-	}
-
-	// Validate if all required CB source flags are provided
-	fmt.Println(string(colorGreen), "\n\u2713 Validating source flags", string(colorReset))
-	validateSourceCBFlags()
-
-	fmt.Println(string(colorCyan), "\n\n================= Starting Device Migration =================\n\nRunning Version: ", cbIotCoreMigrationVersion, "\n\n", string(colorReset))
-
-	// Authenticate CB source and destination accounts
-	sourceCtx := context.Background()
-	sourceService, err := cbiotcore.NewService(sourceCtx)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	sourceRegDetails, _ := cbiotcore.GetRegistryCredentials(Args.cbSourceRegistryName, Args.cbSourceRegion, sourceService)
-
-	if sourceRegDetails.SystemKey == "" {
-		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade source registry Details! Please check if -cbSourceRegistryName and/or -cbSourceRegion flags are set correctly.")
-		os.Exit(0)
-	}
-	devices, deviceConfigs := fetchDevicesFromClearBladeIotCore(sourceCtx, sourceService)
-
-	if Args.exportBatchSize != 0 {
-		ExportDeviceBatches(devices, Args.exportBatchSize)
-		fmt.Println(string(colorGreen), "\n\n\u2713 Device batches exported to csv!", string(colorReset))
-		return
-	}
-
-	// Validate if all required CB destination flags are provided
-	fmt.Println(string(colorGreen), "\n\u2713 Validating destination flags", string(colorReset))
-	validateCBFlags(Args.cbSourceRegion)
-
-	fmt.Println(string(colorGreen), "\n\u2713 All Flags validated!", string(colorReset))
-
-	destinationCtx := context.Background()
-	destinationService, err := cbiotcore.NewService(destinationCtx)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	regDetails, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, destinationService)
-	if regDetails.SystemKey == "" {
-		fmt.Println(string(colorRed), "\n\u2715 Unable to fetch ClearBlade destination registry Details! Please check if -cbRegistryName and/or -cbRegistryRegion flags are set correctly.")
-		os.Exit(0)
-	}
-
-	// Fetch devices from the given registry
-	errorLogs := make([]ErrorLog, 0)
-
-	if Args.cleanupCbRegistry {
-		deleteAllFromCbRegistry(destinationService)
-		fmt.Println(string(colorGreen), "\n\n\u2713 Successfully Cleaned up destination ClearBlade registry!\n", string(colorReset))
-	}
-
-	// Add fetched devices to ClearBlade Device table
-	errorLogs = addDevicesToClearBlade(destinationService, devices, deviceConfigs, errorLogs)
-
-	migrateBoundDevicesToClearBlade(destinationService, sourceService, devices, errorLogs)
-
-	if len(errorLogs) > 0 {
-		if err := generateFailedDevicesCSV(errorLogs); err != nil {
-			log.Fatalln(err)
-		}
-	}
-
-	fmt.Println(string(colorGreen), "\n\n\u2713 Migration complete!", string(colorReset))
-
 }
 
 func validateSourceCBFlags() {
 	if Args.cbSourceServiceAccount == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbSourceServiceAccount is required parameter")
+			log.Fatalln("-cbSourceServiceAccount is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Source Service Account File path (.json): ")
 		if err != nil {
@@ -172,17 +84,12 @@ func validateSourceCBFlags() {
 
 	// validate that path to service account file exists
 	if _, err := os.Stat(Args.cbSourceServiceAccount); errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("Could not location service account file %s. Please make sure the path is correct\n", Args.cbSourceServiceAccount)
-	}
-
-	err := os.Setenv("CLEARBLADE_CONFIGURATION", Args.cbSourceServiceAccount)
-	if err != nil {
-		log.Fatalln("Failed to set CLEARBLADE_CONFIGURATION env variable", err.Error())
+		log.Fatalf("Could not locate service account file %s. Please make sure the path is correct", Args.cbSourceServiceAccount)
 	}
 
 	if Args.cbSourceRegistryName == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbSourceRegistryName is required parameter")
+			log.Fatalln("-cbSourceRegistryName is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Source Registry Name: ")
 		if err != nil {
@@ -193,7 +100,7 @@ func validateSourceCBFlags() {
 
 	if Args.cbSourceRegion == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbSourceRegion is required parameter")
+			log.Fatalln("-cbSourceRegion is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Source Registry Region: ")
 		if err != nil {
@@ -215,11 +122,10 @@ func validateSourceCBFlags() {
 }
 
 func validateCBFlags(registryRegion string) {
-
-	fmt.Println(string(colorGreen), "\n\u2713 Validating service account flag", string(colorReset))
+	printfColored(colorGreen, "\u2713 Validating service account flag")
 	if Args.cbServiceAccount == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbServiceAccount is a required paramter")
+			log.Fatalln("-cbServiceAccount is a required parameter")
 		}
 
 		value, err := readInput("Enter path to ClearBlade service account file. See https://clearblade.atlassian.net/wiki/spaces/IC/pages/2240675843/Add+service+accounts+to+a+project for more info: ")
@@ -230,21 +136,15 @@ func validateCBFlags(registryRegion string) {
 	}
 
 	// validate that path to service account file exists
-	fmt.Println(string(colorGreen), "\n\u2713 Validating service account location", string(colorReset))
+	printfColored(colorGreen, "\u2713 Validating service account location")
 	if _, err := os.Stat(Args.cbServiceAccount); errors.Is(err, os.ErrNotExist) {
-		log.Fatalf("Could not location service account file %s. Please make sure the path is correct\n", Args.cbServiceAccount)
+		log.Fatalf("Could not locate service account file %s. Please make sure the path is correct", Args.cbServiceAccount)
 	}
 
-	fmt.Println(string(colorGreen), "\n\u2713 Setting environment variable CLEARBLADE_CONFIGURATION", string(colorReset))
-	err := os.Setenv("CLEARBLADE_CONFIGURATION", Args.cbServiceAccount)
-	if err != nil {
-		log.Fatalln("Failed to set CLEARBLADE_CONFIGURATION env variable", err.Error())
-	}
-
-	fmt.Println(string(colorGreen), "\n\u2713 Validating registry name", string(colorReset))
+	printfColored(colorGreen, "\u2713 Validating registry name")
 	if Args.cbRegistryName == "" {
 		if Args.silentMode {
-			log.Fatalln("-cbRegistryName is required parameter")
+			log.Fatalln("-cbRegistryName is a required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Registry Name: ")
 		if err != nil {
@@ -253,11 +153,10 @@ func validateCBFlags(registryRegion string) {
 		Args.cbRegistryName = value
 	}
 
-	fmt.Println(string(colorGreen), "\n\u2713 Validating registry region", string(colorReset))
+	printfColored(colorGreen, "\u2713 Validating registry region")
 	if Args.cbRegistryRegion == "" {
 		if Args.silentMode {
 			Args.cbRegistryRegion = Args.cbSourceRegion
-			// log.Fatalln("-cbRegistryRegion is required parameter")
 		}
 		value, err := readInput("Enter ClearBlade Registry Region (Press enter to skip if you are migrating to the same region): ")
 		if err != nil {
@@ -269,7 +168,106 @@ func validateCBFlags(registryRegion string) {
 		} else {
 			Args.cbRegistryRegion = value
 		}
+	}
+}
 
+func getIoTCoreService(serviceAccountFilePath string) (*cbiotcore.Service, error) {
+	err := os.Setenv("CLEARBLADE_CONFIGURATION", serviceAccountFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set CLEARBLADE_CONFIGURATION env variable: %w", err)
+	}
+	return cbiotcore.NewService(context.Background())
+}
+
+func verifyRegistryDetails(service *cbiotcore.Service, registryName, region string) error {
+	regDetails, err := cbiotcore.GetRegistryCredentials(registryName, region, service)
+	if err != nil {
+		return err
+	}
+	if regDetails.SystemKey == "" {
+		return fmt.Errorf("no system key found in registry %s (region: %s)", registryName, region)
+	}
+	return nil
+}
+
+func main() {
+	if len(os.Args) == 1 {
+		log.Fatalln("No flags supplied. Use clearblade-iot-core-migration --help to view details.")
 	}
 
+	if os.Args[1] == "version" {
+		fmt.Println(cbIotCoreMigrationVersion)
+		os.Exit(0)
+	}
+
+	initMigrationFlags()
+
+	if err := InitializeCheckpointSystem(); err != nil {
+		log.Fatalf("Failed to initialize checkpoint system: %s\n", err)
+	}
+
+	printfColored(colorGreen, "\u2713 Validating source flags")
+	validateSourceCBFlags()
+	printfColored(colorGreen, "\u2713 Validating destination flags")
+	validateCBFlags(Args.cbSourceRegion)
+
+	printfColored(colorGreen, "\u2713 All Flags validated")
+	printfColored(colorCyan, "================= Starting Device Migration =================\nRunning Version: %s\n", cbIotCoreMigrationVersion)
+
+	// --------------------- Fetch data from source ---------------------
+
+	sourceService, err := getIoTCoreService(Args.cbSourceServiceAccount)
+	if err != nil {
+		log.Fatalf("Unable to connect to source registry: %s\n", err)
+	}
+	err = verifyRegistryDetails(sourceService, Args.cbSourceRegistryName, Args.cbSourceRegion)
+	if err != nil {
+		log.Fatalf("Error verifying registry details: %s\n", err)
+	}
+
+	devices := fetchDevices(sourceService)
+	deviceConfigs := fetchConfigHistory(sourceService, devices)
+	gatewayBindings := fetchGatewayBindings(sourceService, devices)
+
+	if Args.exportBatchSize != 0 { // TODO
+		ExportDeviceBatches(devices, Args.exportBatchSize)
+		printfColored(colorGreen, "\u2713 Device batches exported to csv")
+		return
+	}
+
+	// --------------------- Push data to destination ---------------------
+
+	destinationService, err := getIoTCoreService(Args.cbServiceAccount)
+	if err != nil {
+		log.Fatalf("Unable to connect to destination registry: %s\n", err)
+	}
+	err = verifyRegistryDetails(destinationService, Args.cbRegistryName, Args.cbRegistryRegion)
+	if err != nil {
+		log.Fatalf("Error verifying destination registry details: %s\n", err)
+	}
+
+	defer errorLogger.WriteToFile()
+
+	if Args.cleanupCbRegistry {
+		deleteAllFromCbRegistry(destinationService)
+		printfColored(colorGreen, " \u2713 Successfully cleaned up destination ClearBlade registry")
+	}
+
+	migrated := addDevicesToClearBlade(destinationService, devices)
+	if migrated == len(devices) {
+		printfColored(colorGreen, " \u2713 Migrated %d/%d devices and gateways", migrated, len(devices))
+	} else {
+		printfColored(colorRed, " \u2715 Failed to migrate all devices. Migrated %d/%d devices", migrated, len(devices))
+	}
+	err = updateConfigHistory(destinationService, deviceConfigs)
+	if err != nil {
+		printfColored(colorRed, "\u2715 Unable to update config version history! Reason: %v", err)
+	}
+	migrateBoundDevicesToClearBlade(destinationService, gatewayBindings)
+
+	if err := GetCheckpoint().Complete(); err != nil {
+		printfColored(colorYellow, "Warning: Could not complete checkpoint cleanup: %s", err)
+	}
+
+	printfColored(colorGreen, "\u2713 Migration complete")
 }
