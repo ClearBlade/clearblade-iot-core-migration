@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -90,7 +91,7 @@ func fetchAllDevices(service *cbiotcore.ProjectsLocationsRegistriesDevicesServic
 	return devices
 }
 
-func fetchConfigHistory(service *cbiotcore.Service, devices []*cbiotcore.Device) map[string][]*cbiotcore.DeviceConfig {
+func fetchConfigHistory(service *cbiotcore.Service, devices []*cbiotcore.Device) map[string]interface{} {
 	if !Args.configHistory {
 		return nil
 	}
@@ -133,7 +134,18 @@ func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.Proj
 	if err != nil {
 		return nil, err
 	}
-	return resp.DeviceConfigs, nil
+
+	configs := make(map[string]interface{})
+
+	for _, config := range resp.DeviceConfigs {
+		configs[fmt.Sprint(config.Version)] = map[string]interface{}{
+			"cloudUpdateTime": config.CloudUpdateTime,
+			"deviceAckTime":   config.DeviceAckTime,
+			"binaryData":      base64.StdEncoding.EncodeToString([]byte(config.BinaryData)),
+		}
+	}
+
+	return configs, nil
 }
 
 func fetchGatewayBindings(service *cbiotcore.Service, devices []*cbiotcore.Device) map[string][]*cbiotcore.Device {
