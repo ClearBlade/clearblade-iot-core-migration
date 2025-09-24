@@ -20,7 +20,7 @@ This tool allows multiple CLI flags for starting the migration. See the below ch
 | Path to **Source** ClearBlade Service Account File           | `cbSourceServiceAccount`  | N/A                   | `Yes`  |
 | Device to migrate CSV file path         | `devicesCsv`         | N/A                   | `No`   |
 | Update public keys for existing devices | `updatePublicKeys`   | `true`                | `No`   |
-| Store Config Version History            | `configHistory`      | `false`               | `No`   |
+| Store Config Version History            | `configHistory`      | `true`                | `No`   |
 | Skip Migrating Latest Config            | `skipConfig`         | `false`               | `No`   |
 | Non-Interactive (silent) Mode           | `silentMode`         | `false`               | `No`   |
 | Cleanup existing CB registry            | `cleanupCbRegistry`  | `false`               | `No`   |

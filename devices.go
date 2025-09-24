@@ -138,11 +138,19 @@ func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.Proj
 	configs := make(map[string]interface{})
 
 	for _, config := range resp.DeviceConfigs {
-		configs[fmt.Sprint(config.Version)] = map[string]interface{}{
-			"cloudUpdateTime": config.CloudUpdateTime,
-			"deviceAckTime":   config.DeviceAckTime,
-			"binaryData":      base64.StdEncoding.EncodeToString([]byte(config.BinaryData)),
+		configMap := make(map[string]interface{})
+		
+		if config.CloudUpdateTime != "" {
+			configMap["cloudUpdateTime"] = config.CloudUpdateTime
 		}
+		if config.DeviceAckTime != "" {
+			configMap["deviceAckTime"] = config.DeviceAckTime
+		}
+		if len(config.BinaryData) > 0 {
+			configMap["binaryData"] = base64.StdEncoding.EncodeToString([]byte(config.BinaryData))
+		}
+		
+		configs[fmt.Sprint(config.Version)] = configMap
 	}
 
 	// Return value format:
