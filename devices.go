@@ -145,6 +145,21 @@ func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.Proj
 		}
 	}
 
+	// Return value format:
+	//
+	// {
+	// 	"1": {
+	// 		"cloudUpdateTime": "2021-01-01T00:00:00Z",
+	// 		"deviceAckTime":   "2021-01-01T00:00:00Z",
+	// 		"binaryData":      "base64EncodedBinaryData"
+	// 	},
+	// 	"2": {
+	// 		"cloudUpdateTime": "2021-01-01T00:00:00Z",
+	// 		"deviceAckTime":   "2021-01-01T00:00:00Z",
+	// 		"binaryData":      "base64EncodedBinaryData"
+	// 	}
+	// }
+
 	return configs, nil
 }
 
@@ -390,7 +405,25 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	return nil
 }
 
-func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string][]*cbiotcore.DeviceConfig) error {
+func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string]interface{}) error {
+	// deviceConfigs format:
+	//
+	// {
+	// 	"deviceId": {
+	// 		"1": {
+	// 			"cloudUpdateTime": "2021-01-01T00:00:00Z",
+	// 			"deviceAckTime":   "2021-01-01T00:00:00Z",
+	// 			"binaryData":      "base64EncodedBinaryData"
+	// 		},
+	// 		"2": {
+	// 			"cloudUpdateTime": "2021-01-01T00:00:00Z",
+	// 			"deviceAckTime":   "2021-01-01T00:00:00Z",
+	// 			"binaryData":      "base64EncodedBinaryData"
+	// 		}
+	// 	}
+	// }
+	
+	
 	checkpoint := GetCheckpoint()
 
 	if checkpoint.IsPhaseCompleted(PhaseConfigHistory) {
@@ -402,6 +435,17 @@ func updateConfigHistory(service *cbiotcore.Service, deviceConfigs map[string][]
 		checkpoint.SetPhase(PhaseGatewayBinding)
 		return nil
 	}
+
+	// Post body format:
+	//
+	// {
+	// 	"configs": {
+	// 		"deviceId": {
+	// 			"1": {},
+	// 			"2": {}
+	// 		}
+	// 	}
+	// }
 
 	creds, _ := cbiotcore.GetRegistryCredentials(Args.cbRegistryName, Args.cbRegistryRegion, service)
 	transformedDeviceConfigHistory := map[string]interface{}{"configs": deviceConfigs}

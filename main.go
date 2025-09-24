@@ -259,6 +259,25 @@ func main() {
 	} else {
 		printfColored(colorRed, " \u2715 Failed to migrate all devices. Migrated %d/%d devices", migrated, len(devices))
 	}
+
+	// deviceConfigs format:
+	//
+	// {
+	// 	"deviceId": {
+	// 		"1": {
+	// 			"cloudUpdateTime": "2021-01-01T00:00:00Z",
+	// 			"deviceAckTime":   "2021-01-01T00:00:00Z",
+	// 			"binaryData":      "base64EncodedBinaryData"
+	// 		},
+	// 		"2": {
+	// 			"cloudUpdateTime": "2021-01-01T00:00:00Z",
+	// 			"deviceAckTime":   "2021-01-01T00:00:00Z",
+	// 			"binaryData":      "base64EncodedBinaryData"
+	// 		}
+	// 	}
+	// }
+
+
 	err = updateConfigHistory(destinationService, deviceConfigs)
 	if err != nil {
 		printfColored(colorRed, "\u2715 Unable to update config version history! Reason: %v", err)
