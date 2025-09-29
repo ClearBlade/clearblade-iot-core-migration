@@ -226,14 +226,15 @@ func main() {
 	}
 
 	devices := fetchDevices(sourceService)
-	deviceConfigs := fetchConfigHistory(sourceService, devices)
-	gatewayBindings := fetchGatewayBindings(sourceService, devices)
 
 	if Args.exportBatchSize != 0 { // TODO
 		ExportDeviceBatches(devices, Args.exportBatchSize)
 		printfColored(colorGreen, "\u2713 Device batches exported to csv")
 		return
 	}
+
+	deviceConfigs := fetchConfigHistory(sourceService, devices)
+	gatewayBindings := fetchGatewayBindings(sourceService, devices)
 
 	// --------------------- Push data to destination ---------------------
 
