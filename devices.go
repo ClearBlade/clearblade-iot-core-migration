@@ -20,7 +20,14 @@ func fetchDevices(service *cbiotcore.Service) []*cbiotcore.Device {
 
 	if checkpoint.IsPhaseCompleted(PhaseDeviceFetch) {
 		printfColored(colorGreen, "\u2713 Device fetch phase already completed, loading from checkpoint")
-		return checkpoint.GetFetchedDevices()
+		devices, err := LoadDevicesFromFile()
+		if err != nil {
+			log.Fatalf("Error loading devices from file: %v", err)
+		}
+		if devices == nil {
+			log.Fatalln("Fetch phase is marked complete but no devices file was found")
+		}
+		return devices
 	}
 
 	deviceService := cbiotcore.NewProjectsLocationsRegistriesDevicesService(service)
@@ -44,7 +51,19 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 	remainingDeviceIds := checkpoint.GetUnfetchedDeviceIds(deviceIds)
 	if len(remainingDeviceIds) == 0 {
 		printfColored(colorGreen, " \u2713 All CSV devices already fetched from checkpoint")
-		return checkpoint.GetFetchedDevices()
+		devices, err := LoadDevicesFromFile()
+		if err != nil {
+			log.Fatalf("Error loading devices from file: %v", err)
+		}
+		if devices == nil {
+			log.Fatalln("All devices marked fetched in checkpoint but no devices file was found")
+		}
+		return devices
+	}
+
+	// Load any devices already written during a previous partial run.
+	if existing, err := LoadDevicesFromFile(); err == nil && existing != nil {
+		devices = existing
 	}
 
 	bar := getProgressBar(len(remainingDeviceIds), "Fetching remaining devices from source registry...")
@@ -59,15 +78,19 @@ func fetchDevicesFromCSV(service *cbiotcore.ProjectsLocationsRegistriesDevicesSe
 			if err != nil {
 				log.Fatalln("Error fetching csv device: ", err.Error())
 			}
+			if err := checkpoint.AppendDeviceToFile(device); err != nil {
+				log.Fatalf("Error saving device to file: %v", err)
+			}
+			checkpoint.AddFetchedDevice(device.Id)
 			deviceMutex.Lock()
 			defer deviceMutex.Unlock()
 			devices = append(devices, device)
-			checkpoint.AddFetchedDevice(device)
 			bar.Add(1)
 		})
 	}
 
 	wp.Wait()
+	checkpoint.CloseDeviceFile()
 	checkpoint.SetPhase(PhaseDeviceMigrate)
 	printfColored(colorGreen, " \u2713 Done fetching devices")
 	return devices
@@ -83,11 +106,17 @@ func fetchAllDevices(service *cbiotcore.ProjectsLocationsRegistriesDevicesServic
 
 	checkpoint.SetTotalDevices(len(devices))
 	for _, device := range devices {
-		checkpoint.AddFetchedDevice(device)
+		checkpoint.AddFetchedDevice(device.Id)
 	}
+
+	if err := checkpoint.SaveAllDevicesToFile(devices); err != nil {
+		log.Fatalf("Error saving devices to file: %v", err)
+	}
+
 	checkpoint.SetPhase(PhaseDeviceMigrate)
 
 	printfColored(colorGreen, " \u2713 Done fetching devices")
+	log.Println("Devices fetched: ", len(devices))
 	return devices
 }
 
