@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -23,20 +25,22 @@ const (
 )
 
 type CheckpointState struct {
-	StartTime         time.Time                    `json:"start_time"`
-	LastUpdated       time.Time                    `json:"last_updated"`
-	CurrentPhase      MigrationPhase               `json:"current_phase"`
-	CompletedPhases   []MigrationPhase             `json:"completed_phases"`
-	DevicesFetched    map[string]*cbiotcore.Device `json:"devices_fetched"`
-	DevicesMigrated   map[string]struct{}          `json:"devices_migrated"`
-	ConfigsProcessed  map[string]struct{}          `json:"configs_processed"`
-	ConfigHistory     map[string]interface{}       `json:"config_history"`
-	GatewaysProcessed map[string]struct{}          `json:"gateways_processed"`
-	TotalDevices      int                          `json:"total_devices"`
-	Args              DeviceMigratorArgs           `json:"args"`
-	mutex             sync.RWMutex                 `json:"-"`
-	dirty             bool                         `json:"-"`
-	saveTimer         *time.Timer                  `json:"-"`
+	StartTime         time.Time              `json:"start_time"`
+	LastUpdated       time.Time              `json:"last_updated"`
+	CurrentPhase      MigrationPhase         `json:"current_phase"`
+	CompletedPhases   []MigrationPhase       `json:"completed_phases"`
+	DevicesFetched    map[string]struct{}    `json:"devices_fetched"`
+	DevicesMigrated   map[string]struct{}    `json:"devices_migrated"`
+	ConfigsProcessed  map[string]struct{}    `json:"configs_processed"`
+	ConfigHistory     map[string]interface{} `json:"config_history"`
+	GatewaysProcessed map[string]struct{}    `json:"gateways_processed"`
+	TotalDevices      int                    `json:"total_devices"`
+	Args              DeviceMigratorArgs     `json:"args"`
+	mutex             sync.RWMutex           `json:"-"`
+	dirty             bool                   `json:"-"`
+	saveTimer         *time.Timer            `json:"-"`
+	deviceFile        *os.File               `json:"-"`
+	deviceFileMu      sync.Mutex             `json:"-"`
 }
 
 var globalCheckpoint *CheckpointState
@@ -45,13 +49,17 @@ func getCheckpointFilePath() string {
 	return filepath.Join(Args.workDir, "migration_checkpoint.json")
 }
 
+func getDevicesFilePath() string {
+	return filepath.Join(Args.workDir, "devices.json")
+}
+
 func NewCheckpointState() *CheckpointState {
 	c := &CheckpointState{
 		StartTime:         time.Now(),
 		LastUpdated:       time.Now(),
 		CurrentPhase:      PhaseDeviceFetch,
 		CompletedPhases:   []MigrationPhase{},
-		DevicesFetched:    make(map[string]*cbiotcore.Device),
+		DevicesFetched:    make(map[string]struct{}),
 		DevicesMigrated:   make(map[string]struct{}),
 		ConfigsProcessed:  make(map[string]struct{}),
 		ConfigHistory:     make(map[string]interface{}),
@@ -116,12 +124,14 @@ func (c *CheckpointState) startSaveTimer() {
 	}
 	c.saveTimer = time.AfterFunc(5*time.Second, func() {
 		c.mutex.Lock()
-		defer c.mutex.Unlock()
 		if c.dirty {
 			if err := c.Save(); err != nil {
 				printfColored(colorYellow, "Warning: Failed to auto-save checkpoint: %v", err)
 			}
 		}
+		c.mutex.Unlock()
+		// Schedule next tick after releasing the mutex to avoid holding it
+		// while time.AfterFunc allocates its goroutine.
 		c.startSaveTimer()
 	})
 }
@@ -148,11 +158,11 @@ func (c *CheckpointState) SetPhase(phase MigrationPhase) {
 	}
 }
 
-func (c *CheckpointState) AddFetchedDevice(device *cbiotcore.Device) {
+func (c *CheckpointState) AddFetchedDevice(deviceId string) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	c.DevicesFetched[device.Id] = device
+	c.DevicesFetched[deviceId] = struct{}{}
 	c.markDirty()
 }
 
@@ -215,17 +225,6 @@ func (c *CheckpointState) GetUnfetchedDeviceIds(deviceIds []string) []string {
 	return unfetchedDeviceIds
 }
 
-func (c *CheckpointState) GetFetchedDevices() []*cbiotcore.Device {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
-	devices := make([]*cbiotcore.Device, 0, len(c.DevicesFetched))
-	for _, device := range c.DevicesFetched {
-		devices = append(devices, device)
-	}
-	return devices
-}
-
 func (c *CheckpointState) GetConfigHistory() map[string]interface{} {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
@@ -270,7 +269,118 @@ func (c *CheckpointState) GetRemainingDevicesForConfig(allDevices []*cbiotcore.D
 	return remaining
 }
 
+// AppendDeviceToFile writes a single device to the devices file in JSON lines format.
+// Safe to call concurrently from multiple goroutines.
+func (c *CheckpointState) AppendDeviceToFile(device *cbiotcore.Device) error {
+	c.deviceFileMu.Lock()
+	defer c.deviceFileMu.Unlock()
+
+	if c.deviceFile == nil {
+		if err := os.MkdirAll(Args.workDir, 0755); err != nil {
+			return fmt.Errorf("failed to create work directory: %w", err)
+		}
+		f, err := os.OpenFile(getDevicesFilePath(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to open devices file: %w", err)
+		}
+		c.deviceFile = f
+	}
+
+	data, err := json.Marshal(device)
+	if err != nil {
+		return fmt.Errorf("failed to marshal device: %w", err)
+	}
+	data = append(data, '\n')
+	_, err = c.deviceFile.Write(data)
+	return err
+}
+
+// SaveAllDevicesToFile writes all devices to the devices file at once, replacing any
+// existing content. Use this after a bulk fetch (fetchAllDevices) rather than
+// AppendDeviceToFile to avoid the per-device open overhead.
+func (c *CheckpointState) SaveAllDevicesToFile(devices []*cbiotcore.Device) error {
+	c.deviceFileMu.Lock()
+	defer c.deviceFileMu.Unlock()
+
+	// Close any open append handle before truncating.
+	if c.deviceFile != nil {
+		c.deviceFile.Close()
+		c.deviceFile = nil
+	}
+
+	if err := os.MkdirAll(Args.workDir, 0755); err != nil {
+		return fmt.Errorf("failed to create work directory: %w", err)
+	}
+
+	f, err := os.Create(getDevicesFilePath())
+	if err != nil {
+		return fmt.Errorf("failed to create devices file: %w", err)
+	}
+	defer f.Close()
+
+	w := bufio.NewWriterSize(f, 4*1024*1024)
+	for _, device := range devices {
+		data, err := json.Marshal(device)
+		if err != nil {
+			return fmt.Errorf("failed to marshal device: %w", err)
+		}
+		if _, err := w.Write(data); err != nil {
+			return err
+		}
+		if err := w.WriteByte('\n'); err != nil {
+			return err
+		}
+	}
+	return w.Flush()
+}
+
+// CloseDeviceFile flushes and closes the open device file handle (if any).
+func (c *CheckpointState) CloseDeviceFile() {
+	c.deviceFileMu.Lock()
+	defer c.deviceFileMu.Unlock()
+	if c.deviceFile != nil {
+		_ = c.deviceFile.Sync()
+		c.deviceFile.Close()
+		c.deviceFile = nil
+	}
+}
+
+// LoadDevicesFromFile reads all devices from the devices file (JSON lines format).
+// Returns nil, nil if the file does not exist.
+func LoadDevicesFromFile() ([]*cbiotcore.Device, error) {
+	path := getDevicesFilePath()
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to open devices file: %w", err)
+	}
+	defer f.Close()
+
+	var devices []*cbiotcore.Device
+	scanner := bufio.NewScanner(f)
+	// Allow up to 10 MB per line to accommodate devices with large payloads.
+	scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var device cbiotcore.Device
+		if err := json.Unmarshal(line, &device); err != nil {
+			return nil, fmt.Errorf("failed to parse device from file: %w", err)
+		}
+		devices = append(devices, &device)
+	}
+	return devices, scanner.Err()
+}
+
 func (c *CheckpointState) Complete() error {
+	// Close the device file before acquiring the checkpoint mutex to avoid
+	// lock ordering issues.
+	c.CloseDeviceFile()
+
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
@@ -284,6 +394,11 @@ func (c *CheckpointState) Complete() error {
 	checkpointPath := getCheckpointFilePath()
 	if err := os.Remove(checkpointPath); err != nil {
 		printfColored(colorYellow, "Warning: Could not remove checkpoint file: %v", err)
+	}
+
+	devicesPath := getDevicesFilePath()
+	if err := os.Remove(devicesPath); err != nil && !os.IsNotExist(err) {
+		printfColored(colorYellow, "Warning: Could not remove devices file: %v", err)
 	}
 
 	return nil

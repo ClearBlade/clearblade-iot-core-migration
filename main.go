@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	cbIotCoreMigrationVersion = "v1.7.0"
+	cbIotCoreMigrationVersion = "v1.8.0"
 )
 
 var (
