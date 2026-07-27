@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -176,7 +175,7 @@ func fetchConfigVersionHistory(device *cbiotcore.Device, service *cbiotcore.Proj
 			configMap["deviceAckTime"] = config.DeviceAckTime
 		}
 		if len(config.BinaryData) > 0 {
-			configMap["binaryData"] = base64.StdEncoding.EncodeToString([]byte(config.BinaryData))
+			configMap["binaryData"] = config.BinaryData
 		}
 		
 		configs[fmt.Sprint(config.Version)] = configMap
@@ -427,7 +426,7 @@ func updateDevice(deviceService *cbiotcore.ProjectsLocationsRegistriesDevicesSer
 	if !Args.skipConfig {
 		config := &cbiotcore.ModifyCloudToDeviceConfigRequest{
 			VersionToUpdate: 0,
-			BinaryData:      base64.StdEncoding.EncodeToString([]byte(device.Config.BinaryData)),
+			BinaryData:      device.Config.BinaryData,
 		}
 
 		updateConfigCall := deviceService.ModifyCloudToDeviceConfig(getCBDevicePath(device.Id), config)
