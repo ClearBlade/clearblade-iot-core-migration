@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -53,7 +54,13 @@ func readCsvFile(filePath string) ([][]string, error) {
 	}
 	defer f.Close()
 
-	records, err := csv.NewReader(f).ReadAll()
+	reader := bufio.NewReader(f)
+	bom, err := reader.Peek(3)
+	if err == nil && bytes.Equal(bom, []byte{0xEF, 0xBB, 0xBF}) {
+		reader.Discard(3)
+	}
+
+	records, err := csv.NewReader(reader).ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CSV: %w", err)
 	}
